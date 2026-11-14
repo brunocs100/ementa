@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.example
+
+# Dados locais e artefatos
+data/uploads/
+data/clientes/
+mlruns/
+ml/outputs/
+*.gguf
+
+# Ferramentas
+.idea/
+node_modules/
+.DS_Store
+Thumbs.db
