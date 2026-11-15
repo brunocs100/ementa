@@ -40,10 +40,35 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
+      - run: uvx pre-commit@4.7.0 run --all-files --show-diff-on-failure
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy packages apps
+      - run: uv run lint-imports
       - run: uv run pytest -m "not eval"
+
+  security:
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: gitleaks over the whole history
+        run: |
+          base=https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION
+          curl -sSfLO "$base/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt" | grep linux_x64.tar.gz | sha256sum -c -
+          tar -xzf "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" gitleaks
+          ./gitleaks git --redact --exit-code 1 .
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - name: pip-audit on the locked dependencies
+        run: |
+          uv export --frozen --all-groups --no-emit-workspace --format requirements-txt -o requirements-audit.txt
+          uvx pip-audit@2.10.1 -r requirements-audit.txt --require-hashes --disable-pip --progress-spinner off
 
   compose:
     runs-on: ubuntu-latest
