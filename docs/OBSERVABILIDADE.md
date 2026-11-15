@@ -28,6 +28,11 @@ A instrumentação segue as convenções semânticas de GenAI do OpenTelemetry. 
 | `retrieval` | Cada busca na base de conhecimento ou na memória (`retrieval memory`) | Modo (vetorial, textual, fusão, rerank), top_k, ids das fontes, duração por etapa |
 | `guardrail` | Cada verificação do pipeline | Nome da verificação, `ementa.guardrail.decision`, motivo |
 | `memory` | Escrita da memória depois da execução (`memory write`) e esquecimento de um titular (`memory forget`) | `ementa.memory.operation` e contagens; nunca texto nem id de titular |
+| `send <tarefa>` | A API põe uma tarefa na fila (produtor) | `messaging.system` (`arq`), `messaging.destination.name`, `messaging.message.id` (id da tarefa), `ementa.job.kind`, `ementa.job.enqueued` |
+| `process <tarefa>` | Cada tentativa de uma tarefa no worker (consumidor), filho do `send` | `messaging.message.id`, `ementa.job.kind`, `ementa.job.attempt`, `ementa.job.outcome`, `ementa.job.retry_in_s`, `ementa.document.id`, `ementa.document.chunks` |
+| `embeddings <modelo>` | Embeddings locais de um documento no worker | `gen_ai.operation.name`, `gen_ai.request.model`, `ementa.embedding.passages` |
+
+O contexto do trace vai junto com a tarefa no Redis, então o upload e a indexação aparecem num trace só, com a API no serviço `ementa` e o worker no `ementa-worker`.
 
 Atributos próprios do projeto:
 
@@ -49,6 +54,8 @@ Atributos próprios do projeto:
 | `ementa.memory.removed` | int | Memórias apagadas num esquecimento; o span não leva mais nada |
 | `ementa.memory.hits` | int | Memórias que a busca trouxe |
 | `ementa.context.compacted` | evento no span corrente, com `messages.before`, `tokens.before`, `tokens.after` e o prompt do resumo | `{"messages.before": 41, "tokens.before": 9120, "tokens.after": 520, ...}` |
+| `ementa.area` | string | `consumidor`: área de atuação dos spans GenAI abertos dentro de `practice_area()` |
+| `ementa.job.outcome` | string | `succeeded`, `retry` ou `failed`, por tentativa |
 
 As chamadas à OpenAI usam a instrumentação oficial (`opentelemetry-instrumentation-openai-v2` 2.4b0, que cobre Chat Completions e embeddings; a Responses API não é coberta, por isso a F1 usa Chat Completions). FastAPI, httpx e psycopg entram com instrumentação automática.
 
@@ -141,6 +148,20 @@ models:
     output_per_mtok: 10.00
 ```
 
+### Orçamento com parada (F3)
+
+O teto do plano é aplicado no kit (`ementa_kit.llm.budget`), em toda chamada que passa pelo `ModelRegistry`:
+
+| Peça | O que faz |
+|---|---|
+| `UsageRecorder` | Processador de spans: lê o uso que a instrumentação da OpenAI grava no span `chat` (o mesmo que o `CostMeter` lê), calcula o custo com `cost_usd` e grava uma linha em `ai.model_usage` (ambiente, área, modelo, tokens, custo, trace e span) |
+| `BudgetGuard` | Callback do LangChain em cada modelo do registro: antes do pedido sair, soma o gasto do dia e do mês e lança `BudgetExceededError` quando um teto foi atingido. Vale para `invoke`, `ainvoke`, `stream` e depois de `bind` |
+| Tetos | `EMENTA_BUDGET_DAILY_USD` (2) e `EMENTA_BUDGET_MONTHLY_USD` (30), contados por ambiente (`EMENTA_ENV`); por área de atuação, `EMENTA_BUDGET_AREAS` em JSON. A área vem de `practice_area("consumidor")` em volta da chamada |
+| Janela | Dia e mês em UTC, como no painel da OpenAI |
+| Erro | O texto diz qual teto, quanto foi gasto e quando volta; a API responde 429 `/problems/budget-exceeded` com `Retry-After` |
+
+O custo só é conhecido depois da resposta, então a chamada que cruza o teto termina e a seguinte é recusada. O registro depende de todo span `chat` ser gravado: a amostragem fica no coletor, nunca no SDK. Se a gravação falhar (banco fora), a chamada que já aconteceu não falha; a próxima verificação do teto falha com o banco e nada sai. Modelo sem preço em `prices.toml` é gravado com custo nulo e um aviso no log.
+
 ## Como investigar um trace
 
 1. Ache a execução: no dashboard de visão geral, clique no ponto de p95 alto ou no erro; ou busque no Tempo por `gen_ai.conversation.id`.
@@ -171,7 +192,7 @@ models:
 | F0 | Container `otel-lgtm` no perfil `obs`, setup do OTel no kit, structlog |
 | F1 | Spans `invoke_agent`, `chat`, `execute_tool`, `retrieval` e `guardrail` de citações; custo por chamada; trace da demo no Grafana Explore |
 | F2 | Evento `ementa.context.section_tokens`, `ementa.prompt.id` e versão, span de PII |
-| F3 | Orçamento com métrica `ementa_budget_remaining_usd` e parada automática; spans da memória e evento `ementa.context.compacted` |
+| F3 | Orçamento com parada automática (feito: `ai.model_usage` e `BudgetExceededError`), spans das tarefas em fila e da memória e evento `ementa.context.compacted` (feitos); métrica `ementa_budget_remaining_usd` pendente |
 | F6 | `ementa.policy.route` e alerta de rota em contexto sigiloso |
 | F7 | Dashboards completos, SLOs por rota, alertas, atribuição de custo por área e advogado, runbooks |
 

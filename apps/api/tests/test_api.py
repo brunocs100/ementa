@@ -1,5 +1,6 @@
 import json
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,8 @@ from ementa.domain.citations import RemovedCitation
 from ementa.users import FirmUser
 from ementa_api.app import create_app
 from ementa_api.auth import Role, User, create_access_token
-from ementa_kit.llm import ModelUnavailableError
+from ementa_kit.llm import BudgetExceededError, ModelUnavailableError
+from ementa_kit.llm.budget import BudgetCap, BudgetWindow
 
 OPENAPI = Path(__file__).parents[1] / "openapi.json"
 QUESTION = "Comprei pela internet e me arrependi. Tenho quanto tempo para desistir?"
@@ -101,6 +103,23 @@ def test_missing_model_key_is_503() -> None:
 
     assert response.status_code == 503
     assert response.json()["type"] == "/problems/model-unavailable"
+
+
+def test_spent_budget_is_429_naming_the_limit_with_retry_after() -> None:
+    resets_at = datetime.now(UTC) + timedelta(hours=2)
+    cap = BudgetCap(BudgetWindow.DAY, 2.0)
+    fake = FakeResearcher(BudgetExceededError(cap, "dev", 2.0134, resets_at))
+
+    response = client(fake).post("/v1/legal-research", json={"question": QUESTION})
+
+    assert response.status_code == 429
+    assert response.headers["content-type"] == "application/problem+json"
+    body = response.json()
+    assert (body["type"], body["title"]) == ("/problems/budget-exceeded", "Budget exceeded")
+    assert body["detail"].startswith(
+        "The daily model budget of the dev environment is spent: US$ 2.0134 of US$ 2.00."
+    )
+    assert 7000 < int(response.headers["retry-after"]) <= 7200
 
 
 def test_unexpected_error_is_500_without_details() -> None:

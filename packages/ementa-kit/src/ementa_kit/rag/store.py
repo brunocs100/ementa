@@ -12,6 +12,7 @@ import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
 
+from ementa_kit.policy import DataClass
 from ementa_kit.rag.fusion import RRF_K
 
 CANDIDATES = 30  # top N of each search before fusion
@@ -106,6 +107,8 @@ class Chunk:
     url: str
     doc_sha256: str
     provision_ids: list[str] = field(default_factory=list)
+    secrecy_level: DataClass = DataClass.PUBLIC
+    acl: list[str] = field(default_factory=list)  # who may read a non-public chunk (RLS, F6)
 
     def search_text(self) -> str:
         return fold(" ".join([self.title, *self.path, self.text]))
@@ -197,6 +200,8 @@ class PgHybridStore:
                 embedding_model,
                 c.doc_sha256,
                 c.search_text(),
+                str(c.secrecy_level),
+                c.acl,
             )
             for c, e in zip(chunks, embeddings, strict=True)
         ]
@@ -205,8 +210,8 @@ class PgHybridStore:
             cur.executemany(
                 self._sql(
                     "insert into {schema}.chunks (id, source_id, title, path, text, provision_ids, "
-                    "url, embedding, embedding_model, doc_sha256, search_text) "
-                    "values (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s)"
+                    "url, embedding, embedding_model, doc_sha256, search_text, secrecy_level, acl) "
+                    "values (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s)"
                 ),
                 rows,
             )

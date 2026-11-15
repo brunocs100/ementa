@@ -20,6 +20,30 @@ services:
       retries: 20
     mem_limit: 512m
 
+  # Job queue of `ementa-worker` (arq). The append-only file keeps queued jobs across restarts;
+  # noeviction makes a full Redis refuse new jobs instead of dropping queued ones.
+  redis:
+    image: redis:8.10.3-alpine
+    profiles: ["core"]
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 96mb
+      - --maxmemory-policy
+      - noeviction
+    ports:
+      - "127.0.0.1:6379:6379"  # no password: reachable from this machine only
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 128m
+
   otel-lgtm:
     image: grafana/otel-lgtm:0.41.0
     profiles: ["obs"]
@@ -36,3 +60,4 @@ services:
 
 volumes:
   pgdata:
+  redisdata:

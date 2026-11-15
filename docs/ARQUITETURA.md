@@ -108,8 +108,8 @@ flowchart LR
 | `otel-lgtm` | `grafana/otel-lgtm` (OTel Collector, Prometheus, Tempo, Loki, Pyroscope) | `obs` | 3000, 4317, 4318 | 1 a 1,5 GB | F0 |
 | `mcp` | `apps/mcp_server` (HTTP); stdio roda local | `mcp` | 8100 | 300 MB | F2 |
 | `api` | `apps/api` (FastAPI e console) | `core` | 8000 | 500 MB | F2 |
-| `redis` | `redis:7` | `core` | 6379 | 50 MB | F3 |
-| `worker` | `apps/worker` (arq) | `core` | — | 500 MB a 1 GB (embeddings) | F3 |
+| `redis` | `redis:8.10.3-alpine`, com arquivo append-only e `noeviction` | `core` | 6379, só em 127.0.0.1 | até 128 MB | F3 |
+| `worker` | `apps/worker` (arq); `uv run ementa-worker` roda local | `core` | — | 500 MB a 1 GB (embeddings) | F3 |
 | `neo4j` | `neo4j:5` Community | `grafo` | 7474, 7687 | 1 GB | F5 |
 | `mailpit` | `axllent/mailpit` | `mail` | 1025, 8025 | 50 MB | F5 |
 | `mlflow` | MLflow com SQLite | `ml` | 5000 | 300 MB | F9 |
@@ -218,6 +218,35 @@ sequenceDiagram
     G-->>W: DOCX com aviso de rascunho
 ```
 
+### Documento do escritório em fila (F3)
+
+```mermaid
+sequenceDiagram
+    actor U as Advogado
+    participant A as API
+    participant P as Postgres
+    participant R as Redis
+    participant W as ementa-worker
+    U->>A: POST /v1/documents (txt, md ou pdf)
+    A->>P: firm.documents, uma linha por quem envia e sha256
+    A->>P: ai.jobs, uma tarefa por documento
+    A->>R: enfileira a tarefa com o id dela e o contexto do trace
+    A-->>U: 202, id da tarefa e Location
+    W->>R: pega a tarefa
+    W->>P: lê os bytes, marca running
+    W->>W: texto, pedaços sob os títulos, embeddings locais
+    W->>P: chunks restritos em firm_knowledge, tarefa succeeded
+    U->>A: GET /v1/jobs/{id}
+    A->>P: estado da tarefa
+    A-->>U: status, tentativas e resultado
+```
+
+- Idempotência: o mesmo arquivo enviado de novo pelo mesmo usuário devolve a mesma tarefa e não grava nada; o arq recusa um segundo job com um id que já tem. A tarefa volta para a fila só se tinha falhado, ou se o Redis a perdeu.
+- A tarefa roda pelo menos uma vez (de novo se o worker cair no meio). Por isso ela é idempotente: documento já indexado não é reprocessado e os chunks de um documento são trocados numa transação só.
+- Erro que pode passar (banco, download do modelo, tentativa acima de 10 minutos) volta com backoff exponencial e jitter: a segunda tentativa espera de 2,5 a 5 s, cada uma seguinte o dobro, até 5 tentativas. Arquivo ilegível falha de vez, com o motivo na tarefa.
+- O estado da tarefa fica no Postgres; o arq não guarda resultado. Os argumentos do job vão em JSON, nunca em pickle (o padrão do arq): quem escreve no Redis não roda código no worker.
+- Formatos: texto e Markdown em UTF-8; PDF com camada de texto, pelo `pypdf` (Python puro, BSD, mantido). PDF escaneado é recusado: não há OCR. Limite de 2 MiB por arquivo.
+
 ### Prazos via DataJud (F5)
 
 ```mermaid
@@ -300,7 +329,9 @@ erDiagram
     }
 ```
 
-Schemas: `firm` (users, clients, cases, case_members, parties, deadlines, movements, documents, time_entries), `knowledge` (sources, chunks), `ai` (runs, tool_calls, guardrail_events, approvals, feedback, eval_runs, eval_results, budgets), `audit` (events, só inserção, com hash encadeado), `analytics` (views para o BI) e `langgraph` (checkpointer e store).
+Schemas: `firm` (users, clients, cases, case_members, parties, deadlines, movements, documents, time_entries), `knowledge` (sources, chunks), `firm_knowledge` (sources, chunks dos documentos do escritório), `ai` (runs, tool_calls, guardrail_events, approvals, feedback, eval_runs, eval_results, jobs, model_usage), `audit` (events, só inserção, com hash encadeado), `analytics` (views para o BI) e `langgraph` (checkpointer e store).
+
+Documentos do escritório (F3): `firm.documents` guarda os bytes, quem enviou (`uploaded_by`), o dono (`owner_id`), quem pode ler (`acl`, que começa com o dono) e `secrecy_level = 'restricted'`. Os chunks deles herdam o nível e a lista e ficam em `firm_knowledge`, separados do corpus público, até o RLS da F6: assim nenhuma busca do `knowledge` alcança dado do escritório e o `ementa ingest --reset`, que recria o `knowledge`, não apaga documento de ninguém. Na F6 as policies usam `owner_id` e `acl` e decidem se os dois índices se juntam.
 
 RLS nos chunks: trecho público (corpus) aparece para todos; trecho de processo só para quem é membro do processo.
 
@@ -585,7 +616,9 @@ O loader de runtime (`ementa_kit.skills`, F2):
 | `DELETE /v1/data-subjects/{id}/memories` | Esquecimento (LGPD) | F3 |
 | `GET /healthz`, `GET /readyz` | Saúde e prontidão | F2 |
 
-Convenções: JWT de curta duração com papel; erros no formato RFC 9457 (`application/problem+json`); `Idempotency-Key` nos POST que iniciam tarefa; paginação por cursor; limite de taxa por usuário no Redis; OpenAPI com exemplos.
+Convenções: JWT de curta duração com papel; erros no formato RFC 9457 (`application/problem+json`); `Idempotency-Key` nos POST que iniciam tarefa (em `POST /v1/documents` a chave é o próprio conteúdo: sha256 por usuário); paginação por cursor; limite de taxa por usuário no Redis; OpenAPI com exemplos.
+
+Problemas próprios da F3: `/problems/budget-exceeded` (429, com o limite atingido no `detail` e `Retry-After` até a virada), `/problems/document-too-large` (413), `/problems/unsupported-media-type` (415), `/problems/invalid-document` (422) e `/problems/queue-unavailable` (503; reenviar o arquivo não duplica nada). A tarefa de outro usuário responde 404, como se não existisse.
 
 ### Chat em SSE (F3)
 
@@ -614,10 +647,11 @@ A conversa fica no checkpointer do LangGraph no Postgres, no schema `langgraph` 
 | Provedor lento | Timeout por papel; streaming com evento de progresso |
 | Erro transitório (429, 5xx) | Retry com backoff exponencial e jitter, limitado |
 | Provedor fora | Circuit breaker por provedor; fallback configurado por papel ou erro claro |
-| Orçamento estourado | Parada antes da chamada, com erro explicando o limite |
+| Orçamento estourado | Parada antes da chamada (`BudgetExceededError`), com erro explicando o limite; na API, 429 com `Retry-After` |
 | Saída fora do schema | Rejeita e refaz uma vez; depois falha com o motivo |
 | Citação não verificada | Remove e avisa; em peça, bloqueia a finalização |
-| Worker reiniciado | Retoma do checkpoint; tarefas idempotentes |
+| Worker reiniciado | Retoma do checkpoint; o arq roda de novo a tarefa interrompida, que é idempotente |
+| Redis fora | `POST /v1/documents` responde 503; o documento e a tarefa já estão no Postgres e reenviar o arquivo enfileira de novo |
 | DataJud indisponível | Nova tentativa na próxima rodada; alerta depois de 24 h |
 
 ## Glossário

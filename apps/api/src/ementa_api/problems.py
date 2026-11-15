@@ -5,7 +5,9 @@ personal data, and error bodies end up in logs. For the same reason `instance` i
 the matched route, not the path as sent, which could hold a CPF typed in by mistake.
 """
 
+import math
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any
 
@@ -15,7 +17,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ementa_kit.llm import ModelUnavailableError
+from ementa_kit.llm import BudgetExceededError, ModelUnavailableError
 
 PROBLEM_JSON = "application/problem+json"
 
@@ -133,6 +135,22 @@ async def _model_unavailable(request: Request, exc: Exception) -> JSONResponse:
     return problem_response(problem_for(exc, _instance(request)))
 
 
+async def _budget_exceeded(request: Request, exc: Exception) -> JSONResponse:
+    """429 with the cap that was reached and, in `Retry-After`, the seconds until it resets."""
+    assert isinstance(exc, BudgetExceededError)
+    wait_s = math.ceil((exc.resets_at - datetime.now(UTC)).total_seconds())
+    return problem_response(
+        Problem(
+            type="/problems/budget-exceeded",
+            title="Budget exceeded",
+            status=429,
+            detail=str(exc),
+            instance=request.url.path,
+        ),
+        headers={"Retry-After": str(max(wait_s, 1))},
+    )
+
+
 async def _unexpected(request: Request, exc: Exception) -> JSONResponse:
     return problem_response(problem_for(exc, _instance(request)))
 
@@ -141,4 +159,5 @@ def install_problem_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, _validation)
     app.add_exception_handler(StarletteHTTPException, _http)
     app.add_exception_handler(ModelUnavailableError, _model_unavailable)
+    app.add_exception_handler(BudgetExceededError, _budget_exceeded)
     app.add_exception_handler(Exception, _unexpected)

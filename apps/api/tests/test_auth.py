@@ -224,7 +224,14 @@ def test_every_v1_route_needs_a_token_and_has_a_line_in_the_matrix() -> None:
     """A new /v1 route fails here until it depends on `current_user` (through `authorized_user`
     or `require_roles`) and the matrix in `ementa.domain.access` grants it to someone."""
     granted = set().union(*(grants.routes for grants in PERMISSIONS.values()))
-    routes = [r for r in build().routes if isinstance(r, APIRoute) and r.path.startswith("/v1/")]
+    app = build()
+    # FastAPI keeps an included router whole (`original_router`); its routes count too.
+    flat = [
+        route
+        for top in app.routes
+        for route in getattr(getattr(top, "original_router", None), "routes", [top])
+    ]
+    routes = [r for r in flat if isinstance(r, APIRoute) and r.path.startswith("/v1/")]
     served = {f"{method} {r.path}" for r in routes for method in r.methods or ()}
 
     for route in routes:

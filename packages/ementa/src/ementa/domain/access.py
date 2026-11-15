@@ -30,6 +30,8 @@ AUDIT_EVENTS_ROUTE = "GET /v1/audit/events"
 FORGET_ROUTE = "DELETE /v1/data-subjects/{subject_id}/memories"
 CHAT_ROUTE = "POST /v1/chat"
 THREAD_ROUTE = "GET /v1/threads/{thread_id}"
+DOCUMENTS_ROUTE = "POST /v1/documents"
+JOB_ROUTE = "GET /v1/jobs/{job_id}"
 
 OPEN_ROUTES = frozenset({TOKEN_ROUTE})
 """Routes anyone may call without a token: only the one that hands tokens out."""
@@ -64,12 +66,16 @@ _RESEARCH_AND_AUDIT = Grants(routes=_RESEARCH.routes | {AUDIT_EVENTS_ROUTE}, too
 # "Pedir esquecimento (LGPD)": the DPO asks and TI executes; nobody else.
 _PRIVACY = Grants(routes=_RESEARCH_AND_AUDIT.routes | {FORGET_ROUTE}, tools=PUBLIC_TOOLS)
 
+# "Enviar documento do escritório": the lawyers and the controladoria; the job status is the
+# uploader's own (the route answers 404 to anyone else).
+_UPLOAD = frozenset({DOCUMENTS_ROUTE, JOB_ROUTE})
+
 PERMISSIONS: Mapping[Role, Grants] = MappingProxyType(
     {
-        Role.SOCIA: _RESEARCH_AND_AUDIT,
-        Role.ASSOCIADO: _RESEARCH,
-        Role.ESTAGIARIO: _RESEARCH,
-        Role.CONTROLADORIA: _RESEARCH,
+        Role.SOCIA: Grants(routes=_RESEARCH_AND_AUDIT.routes | _UPLOAD, tools=PUBLIC_TOOLS),
+        Role.ASSOCIADO: Grants(routes=_RESEARCH.routes | _UPLOAD, tools=PUBLIC_TOOLS),
+        Role.ESTAGIARIO: Grants(routes=_RESEARCH.routes | _UPLOAD, tools=PUBLIC_TOOLS),
+        Role.CONTROLADORIA: Grants(routes=_RESEARCH.routes | _UPLOAD, tools=PUBLIC_TOOLS),
         Role.DPO: _PRIVACY,
         Role.TI: _PRIVACY,
     }

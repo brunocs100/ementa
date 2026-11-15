@@ -30,6 +30,7 @@ from ementa_api.auth import (
     unauthorized,
 )
 from ementa_api.chat import Assistant, add_chat_routes
+from ementa_api.documents import Intake, documents_router
 from ementa_api.problems import (
     Problem,
     install_problem_handlers,
@@ -104,6 +105,7 @@ def create_app(
     audit: Callable[[], AuditLog] = firm_audit_log,
     assistant: Callable[[], Assistant] = services.assistant_agent,
     can_use_tool: Callable[[Role, str], bool] = role_can_use_tool,
+    documents: Callable[[], Intake] = services.document_intake,
 ) -> FastAPI:
     """`can_use_tool(role, tool)` decides which of the assistant's tools a role gets; the
     default is the permission matrix in `ementa.domain.access`."""
@@ -145,7 +147,7 @@ def create_app(
     @app.post(
         "/v1/legal-research",
         response_model=AnswerLegalQuestionOutput,
-        responses=problem_responses(401, 403, 422, 500, 503),
+        responses=problem_responses(401, 403, 422, 429, 500, 503),
         dependencies=[Depends(authorized_user)],
         summary="Pesquisa jurídica com citações verificadas",
         description=ANSWER_DESCRIPTION,
@@ -193,6 +195,8 @@ def create_app(
             items=[AuditEventOut.from_record(r) for r in items],
             next_cursor=str(items[-1].id) if more else None,
         )
+
+    app.include_router(documents_router(documents))
 
     @app.get("/healthz", response_model=Health, tags=["ops"], summary="O processo está de pé")
     def healthz() -> Health:

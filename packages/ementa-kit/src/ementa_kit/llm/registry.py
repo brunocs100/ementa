@@ -2,9 +2,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
+from langchain_core.callbacks import BaseCallbackHandler, BaseCallbackManager
 from langchain_core.language_models import BaseChatModel
 
 from ementa_kit.config import Settings
+from ementa_kit.llm.budget import Budget, BudgetGuard
 
 
 class ModelRole(StrEnum):
@@ -36,13 +38,27 @@ _EFFORT = {
 ChatFactory = Callable[[ModelSpec], BaseChatModel]
 
 
-class ModelRegistry:
-    """Maps a role to a configured chat model. Tests pass `factory` to get fake models."""
+def _add_callback(model: BaseChatModel, handler: BaseCallbackHandler) -> None:
+    if isinstance(model.callbacks, BaseCallbackManager):
+        model.callbacks.add_handler(handler)
+    else:
+        model.callbacks = [*(model.callbacks or []), handler]
 
-    def __init__(self, settings: Settings, factory: ChatFactory | None = None) -> None:
+
+class ModelRegistry:
+    """Maps a role to a configured chat model. Tests pass `factory` to get fake models.
+
+    With a `budget`, every model it hands out checks the spend caps before each call, also after
+    `bind_tools` or inside a graph, and raises `BudgetExceededError` instead of calling.
+    """
+
+    def __init__(
+        self, settings: Settings, factory: ChatFactory | None = None, budget: Budget | None = None
+    ) -> None:
         self._settings = settings
         self._factory = factory or self._openai
         self._cache: dict[ModelRole, BaseChatModel] = {}
+        self.budget = budget
 
     def spec(self, role: ModelRole) -> ModelSpec:
         model = {
@@ -55,7 +71,10 @@ class ModelRegistry:
 
     def chat(self, role: ModelRole) -> BaseChatModel:
         if role not in self._cache:
-            self._cache[role] = self._factory(self.spec(role))
+            model = self._factory(self.spec(role))
+            if self.budget is not None:
+                _add_callback(model, BudgetGuard(self.budget))
+            self._cache[role] = model
         return self._cache[role]
 
     def _openai(self, spec: ModelSpec) -> BaseChatModel:

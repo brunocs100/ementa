@@ -10,13 +10,20 @@ from langgraph.store.postgres import PostgresStore
 from ementa.agents.assistant import AssistantAgent
 from ementa.agents.legal_research import LegalResearchAgent
 from ementa.agents.legal_research.graph import CONTEXT_LIMIT
+from ementa.documents import (
+    FIRM_KNOWLEDGE,
+    DocumentIngestor,
+    DocumentIntake,
+    PgDocumentStore,
+)
 from ementa.knowledge import KnowledgeBase
 from ementa.memory import EXTRACT_PROMPT, subject_key
 from ementa.prompts import get_prompt
 from ementa.users import UserDirectory
 from ementa_kit.audit import PgAuditLog
 from ementa_kit.config import get_settings
-from ementa_kit.llm import ModelRegistry
+from ementa_kit.jobs import JobQueue, PgJobStore
+from ementa_kit.llm import Budget, ModelRegistry, PgUsageLedger, track_usage
 from ementa_kit.memory import MemoryWriter, open_postgres_store, postgres_checkpointer
 from ementa_kit.rag import FastEmbedder, FastReranker, PgHybridStore
 from ementa_kit.skills import SkillLibrary
@@ -51,8 +58,17 @@ def knowledge_base() -> KnowledgeBase:
 
 @lru_cache
 def model_registry() -> ModelRegistry:
+    """Models whose every call is priced from its span and refused once a spend cap is reached.
+
+    Needs `ementa_kit.telemetry.setup()` first, as every entry point does.
+    """
     instrument_openai()
-    return ModelRegistry(get_settings())
+    settings = get_settings()
+    ledger = PgUsageLedger(settings.database_url)
+    ledger.ensure_schema()
+    budget = Budget.from_settings(settings, ledger)
+    track_usage(budget)
+    return ModelRegistry(settings, budget=budget)
 
 
 @lru_cache
@@ -145,3 +161,33 @@ def _pii_guard() -> "PiiGuard":
     from ementa.pii import pii_guard  # Presidio and spaCy take seconds to import
 
     return pii_guard()
+
+
+@lru_cache
+def job_store() -> PgJobStore:
+    jobs = PgJobStore(get_settings().database_url)
+    jobs.ensure_schema()
+    return jobs
+
+
+@lru_cache
+def document_store() -> PgDocumentStore:
+    documents = PgDocumentStore(get_settings().database_url)
+    documents.ensure_schema()
+    return documents
+
+
+@lru_cache
+def document_intake() -> DocumentIntake:
+    """What POST /v1/documents calls: Postgres for the file and the job, Redis for the queue."""
+    return DocumentIntake(document_store(), job_store(), JobQueue(get_settings().redis_url))
+
+
+@lru_cache
+def document_ingestor() -> DocumentIngestor:
+    """What the worker runs. Loads the embedding model, which takes a few seconds."""
+    settings = get_settings()
+    embedder = FastEmbedder(settings.embedding_model)
+    chunks = PgHybridStore(settings.database_url, embedder.dim, schema=FIRM_KNOWLEDGE)
+    chunks.ensure_schema()
+    return DocumentIngestor(document_store(), chunks, embedder)
