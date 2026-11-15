@@ -57,5 +57,34 @@ jobs:
           psql -U ementa -d ementa -tAc
           "select string_agg(extname, ',' order by extname) from pg_extension"
           | grep -q "unaccent,vector"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Send a test span through the kit and find it in Grafana
+        run: |
+          trace_id=$(uv run python - <<'EOF' | grep -m1 -E '^[0-9a-f]{32}$'
+          from opentelemetry import trace
+
+          from ementa_kit.config import get_settings
+          from ementa_kit.telemetry import setup
+
+          provider = setup(get_settings())
+          with trace.get_tracer("ci").start_as_current_span("ci-smoke") as span:
+              trace_id = format(span.get_span_context().trace_id, "032x")
+          provider.force_flush()
+          print(trace_id)
+          EOF
+          )
+          echo "trace id: $trace_id"
+          for _ in $(seq 1 30); do
+            if curl -sf "http://localhost:3000/api/datasources/proxy/uid/tempo/api/traces/$trace_id" > /dev/null; then
+              echo "Found in Tempo through the Grafana API"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Trace $trace_id not found in Tempo"
+          exit 1
       - if: always()
         run: docker compose --profile core --profile obs down -v

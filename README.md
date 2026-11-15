@@ -2,10 +2,10 @@
 
 Plataforma de agentes de IA para escritórios de advocacia. Faz pesquisa jurídica com citações verificadas, análise de contratos, peças com revisão humana e controle de prazos, com governança em todas as etapas.
 
-![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB) ![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-green) ![Status](https://img.shields.io/badge/status-em%20constru%C3%A7%C3%A3o-orange)
+[![CI](https://github.com/brunocs100/ementa/actions/workflows/ci.yml/badge.svg)](https://github.com/brunocs100/ementa/actions/workflows/ci.yml) ![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB) ![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-green) ![Status](https://img.shields.io/badge/status-em%20constru%C3%A7%C3%A3o-orange)
 
 > [!IMPORTANT]
-> Projeto em construção. O código entra por fases: a F0 (fundação) e a maior parte da F1 (pesquisa no CDC com citação verificada e cálculo de prazo, pelo MCP) já rodam; a demo do Marco 1 está prevista para 19/11/2026. Os dados de clientes são fictícios e nada aqui é aconselhamento jurídico.
+> Projeto em construção. O código entra por fases: a F0 (fundação) e a F1 (pesquisa no CDC com citação verificada e cálculo de prazo, pelo MCP) estão no `main`, com CI verde; a demo do Marco 1 está prevista para 19/11/2026. Os dados de clientes são fictícios e nada aqui é aconselhamento jurídico.
 
 ## O que é
 
