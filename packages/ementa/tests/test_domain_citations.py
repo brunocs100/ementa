@@ -1,4 +1,18 @@
-from ementa.domain.citations import extract_ids, split_sentences, verify_citations
+from functools import cache
+
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
+from ementa.domain.citations import (
+    citation_label,
+    extract_ids,
+    label_citations,
+    split_sentences,
+    verify_citations,
+)
+from ementa.ingest.corpus import SOURCE_IDS, load_statute
+from ementa.ingest.index import statute_chunks
 
 ALLOWED = frozenset({"cdc:art49", "cdc:art49:pu", "cdc:art26", "cdc:art26:II"})
 
@@ -106,3 +120,58 @@ def test_without_the_prose_check_only_bracketed_ids_count() -> None:
 
     assert result.text == "O prazo vence em 26/01/2027. Só dias úteis contam (CPC, art. 219)."
     assert [r.reference for r in result.removed] == ["stj:sumula:999"]
+
+
+@cache
+def corpus_ids() -> list[str]:
+    return [
+        i
+        for source in SOURCE_IDS
+        for chunk in statute_chunks(load_statute(source))
+        for i in (chunk.id, *chunk.provision_ids)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("source_id", "label"),
+    [
+        ("cdc:art49", "art. 49 do CDC"),
+        ("cdc:art6:VIII", "art. 6º, VIII, do CDC"),
+        ("cdc:art42:pu", "art. 42, parágrafo único, do CDC"),
+        ("cdc:art12:p1:I", "art. 12, § 1º, I, do CDC"),
+        ("cdc:art54-A:p1", "art. 54-A, § 1º, do CDC"),
+        ("cpc:art22:I:a", "art. 22, I, a, do CPC"),
+        ("cpc:art85:p6-A", "art. 85, § 6º-A, do CPC"),
+        ("cpc:art1035-A:p1", "art. 1.035-A, § 1º, do CPC"),
+        ("cpc:art784:XI-A", "art. 784, XI-A, do CPC"),
+        ("lgpd:art7", "art. 7º da LGPD"),
+        ("stj:sumula:385", "Súmula 385 do STJ"),
+        ("stf:sv:13", "Súmula Vinculante 13 do STF"),
+        ("cc:art186", "cc:art186"),  # a law outside the corpus keeps its id
+        ("cdc:art49:x1", "cdc:art49:x1"),
+    ],
+)
+def test_a_source_id_is_written_as_a_brief_cites_it(source_id: str, label: str) -> None:
+    assert citation_label(source_id) == label
+
+
+def test_every_id_of_the_corpus_has_a_label() -> None:
+    assert [i for i in corpus_ids() if citation_label(i) == i] == []
+
+
+def test_ids_cited_side_by_side_share_one_parenthesis() -> None:
+    text = "Cabe a inversão [cdc:art6:VIII] [cdc:art14], [cdc:art14]. Não [stj:sumula:385]."
+
+    assert label_citations(text) == (
+        "Cabe a inversão (art. 6º, VIII, do CDC; art. 14 do CDC). Não (Súmula 385 do STJ)."
+    )
+
+
+@given(st.lists(st.sampled_from(corpus_ids()), min_size=1, max_size=4), st.sampled_from(" ,;"))
+def test_no_id_is_left_in_brackets(ids: list[str], separator: str) -> None:
+    text = "Frase " + separator.join(f"[{i}]" for i in ids) + "."
+
+    labelled = label_citations(text)
+
+    assert extract_ids(labelled) == []
+    assert labelled.count("(") == 1

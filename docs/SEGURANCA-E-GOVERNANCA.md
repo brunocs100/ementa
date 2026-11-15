@@ -218,6 +218,7 @@ sequenceDiagram
 ```
 
 - Na pesquisa (`/v1/legal-research` e MCP) o cofre vive em memória, por requisição. No chat (F3) ele vive no estado da conversa, no checkpointer: um mapeamento por thread, que dura o mesmo que o histórico, porque o histórico só se reidrata com ele. Um Redis com TTL curto, como estava previsto, apagaria os valores antes da conversa e deixaria o histórico com marcadores. A troca: o valor real fica em repouso no Postgres (schema `langgraph`), protegido pelo acesso ao banco, e apagar os dados de um titular precisa apagar também as threads em que ele aparece (`delete_thread` do checkpointer). O valor real não vai para log nem para span.
+- Na peça (F4), o `brief_drafting` mascara a descrição do caso no primeiro nó, com um mapeamento por execução guardado no estado da thread, e reidrata só o rascunho que vai ao advogado. As peças aprovadas que entram como exemplo passam pelo guardrail com uma cópia desse mapeamento, descartada depois: se o modelo copiar o marcador de um caso antigo, ele fica como marcador e nunca vira, na peça nova, o nome de outro cliente.
 - Só o usuário autorizado recebe a resposta reidratada: no chat, só quem abriu a conversa a lê de volta; para qualquer outro, a conversa não existe (404). Para cliente MCP externo, o marcador fica.
 - No streaming do chat, cada token sai reidratado. O fim do texto fica retido enquanto pode virar marcador (`[CP` antes de `F_1]`), para nenhum marcador partido chegar à tela nem escapar da reidratação; o detalhe está na [Arquitetura](ARQUITETURA.md#chat-em-sse-f3).
 - O cofre é o mapeamento de marcador para valor que `pseudonymize` devolve. O chamador o passa de volta a cada turno, e o mesmo valor mantém o marcador na conversa toda, mesmo com outra pontuação (`123.456.789-09` e `12345678909` viram `[CPF_1]`) ou, num nome, sem acento.
@@ -255,6 +256,7 @@ Modelo de NER: em 51 frases jurídicas fictícias com 33 nomes, já com o format
 - O modelo recebe as fontes com ids canônicos (`cdc:art49`, `cdc:art42:pu`, `cpc:art219`, `stj:sumula:385`) e cita por id.
 - O verificador extrai toda citação da resposta (id e menção textual, como "art. 49 do CDC") e confere contra as fontes que foram para o contexto daquela chamada. Citação fora delas é removida, mesmo que exista no corpus.
 - Citação não encontrada: na pesquisa, é removida e a resposta ganha um aviso; na peça, a finalização é bloqueada até revisão.
+- Na peça (`brief_drafting`, F4), as fontes permitidas são as que o `legal_research` verificou para as teses. Citação que falha manda o rascunho de volta ao modelo uma vez, com o motivo; se falhar de novo, a frase sai e o resumo da aprovação a lista. O advogado nunca recebe para aprovar um rascunho com citação não verificada, e o texto que ele mesmo edita é de responsabilidade dele.
 - A taxa de citações removidas é métrica e entra na avaliação (ver [Avaliação](AVALIACAO.md)).
 
 ## Política de HITL
