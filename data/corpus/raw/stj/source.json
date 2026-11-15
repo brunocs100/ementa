@@ -1,0 +1,13 @@
+{
+  "id": "stj",
+  "title": "Súmulas do STJ",
+  "statute": "Súmulas do Superior Tribunal de Justiça",
+  "url": "https://processo.stj.jus.br/SCON/sumstj/toc.jsp?materia=%22DIREITO+DO+CONSUMIDOR%22+OR+%22DIREITO+BANC%c1RIO%22&situacao=%28SUMULA+INPATH%28TIPO%29%29+NOT+%28CANCELADA+INPATH%28INDE%29%29&b=SUMU&l=100&i=1&h=false",
+  "file": "sumulas-consumidor-bancario.htm",
+  "format": "stj-sumulas",
+  "encoding": "iso-8859-1",
+  "retrieved_at": "2026-11-15",
+  "sha256": "c93d5cf75ec606d342f2ce848f93881aa91864131a055b1816621c961f139995",
+  "license": "Enunciado de súmula, ato oficial sem proteção de direito autoral (Lei 9.610/1998, art. 8º, IV)",
+  "selection": "Súmulas que o SCON classifica nos ramos DIREITO DO CONSUMIDOR ou DIREITO BANCÁRIO, com o filtro de situação 'Em vigor' (73 na página). O parser deixa de fora a 357, marcada SÚMULA REVOGADA no próprio verbete: ficam 72."
+}

@@ -73,9 +73,34 @@ def test_get_statute_article_returns_the_official_text() -> None:
     assert data["url"].startswith("https://www.planalto.gov.br/")
 
 
+def test_get_statute_article_returns_cpc_and_lgpd_provisions() -> None:
+    cpc = call("get_statute_article", {"source_id": "cpc:art1003:p5"}).structured_content
+    lgpd = call("get_statute_article", {"source_id": "lgpd:art65:I-A"}).structured_content
+
+    assert cpc["article_id"] == "cpc:art1003"
+    assert cpc["statute"] == "Lei nº 13.105, de 16 de março de 2015"
+    assert "15 (quinze) dias" in cpc["provision_text"]
+    assert cpc["text"].startswith("Art. 1.003.")
+    assert lgpd["provision_text"].startswith("dia 1º de agosto de 2021")
+
+
+def test_get_statute_article_returns_sumulas() -> None:
+    stj = call("get_statute_article", {"source_id": "stj:sumula:385"}).structured_content
+    stf = call("get_statute_article", {"source_id": "stf:sv:13"}).structured_content
+
+    assert stj["article_id"] == "stj:sumula:385"
+    assert stj["provision_text"].startswith("Da anotação irregular em cadastro")
+    assert stj["text"].startswith("Súmula 385 do STJ: Da anotação irregular")
+    assert stj["url"].startswith("https://processo.stj.jus.br/SCON/")
+    assert stf["title"] == "Súmulas vinculantes do STF"
+    assert stf["url"].endswith("sumariosumulas.asp?base=26&sumula=1227")
+
+
 def test_get_statute_article_reports_unknown_ids() -> None:
     assert call("get_statute_article", {"source_id": "cdc:art999"}).is_error
-    assert call("get_statute_article", {"source_id": "stj:sumula:385"}).is_error
+    assert call("get_statute_article", {"source_id": "stj:sumula:9999"}).is_error
+    assert call("get_statute_article", {"source_id": "stf:sv:9"}).is_error  # cancelled
+    assert call("get_statute_article", {"source_id": "stj:sumula"}).is_error  # bad id
 
 
 HIT = Hit(

@@ -38,6 +38,10 @@ uv run ementa ask "Posso desistir da compra online?"   # agente legal_research (
 uv run ementa smoke --retrieval-only             # 10 perguntas de fumaça, só a busca
 uv run ementa smoke                              # as 10 com o agente (cerca de US$ 0,10)
 uv run ementa-mcp                                # servidor MCP via stdio
+
+# A partir da F2
+uv run ementa ingest all --reset                 # CDC, LGPD, CPC, súmulas do STJ e do STF (cdc, lgpd, cpc, stj ou stf, um por vez)
+uv run ementa smoke --retrieval-only --file evals/legal_research.jsonl   # 30 perguntas, só a busca
 ```
 
 ## Convenções

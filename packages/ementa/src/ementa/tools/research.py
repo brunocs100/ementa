@@ -9,14 +9,15 @@ from ementa_kit.rag import Hit
 DATA_CLASS = DataClass.PUBLIC
 
 SEARCH_DESCRIPTION = (
-    "Busca híbrida (vetorial e textual, fundida por RRF) no corpus jurídico público da Ementa, "
-    "hoje o Código de Defesa do Consumidor. Devolve os artigos mais relevantes com id de "
-    "fonte, texto oficial e URL. Use para achar o artigo; para a resposta citada, use "
-    "answer_legal_question."
+    "Busca híbrida (vetorial e textual, fundida por RRF) no corpus jurídico público da Ementa: "
+    "CDC, LGPD, CPC, súmulas do STJ de Direito do Consumidor e Bancário e súmulas vinculantes "
+    "do STF. Devolve os artigos e súmulas mais relevantes com id de fonte, texto oficial e URL. "
+    "Use para achar a fonte; para a resposta citada, use answer_legal_question."
 )
 
 ANSWER_DESCRIPTION = (
-    "Responde uma pergunta de Direito do Consumidor com base no CDC. O agente legal_research busca "
+    "Responde uma pergunta jurídica com base no corpus (CDC, LGPD, CPC, súmulas do STJ de "
+    "Direito do Consumidor e Bancário e súmulas vinculantes do STF). O agente legal_research busca "
     "as fontes, escreve a resposta e passa pelo verificador: toda citação mostrada existe no "
     "corpus, e o que não foi verificado é removido e listado em `removed`. Não calcula prazo em "
     "dias úteis (use calculate_deadline). A saída é rascunho para o advogado conferir."

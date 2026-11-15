@@ -68,3 +68,29 @@ def test_answer_without_citations_is_flagged() -> None:
 def test_line_breaks_are_preserved() -> None:
     answer = "Resposta curta [cdc:art49].\n\nDetalhe [cdc:art49:pu]."
     assert verify_citations(answer, ALLOWED).text == answer
+
+
+MORE = frozenset({"cpc:art1003", "cpc:art1003:p5", "lgpd:art65:I-A", "stj:sumula:385", "stf:sv:25"})
+
+
+def test_prose_article_with_thousands_dot_backed_by_its_id_stays() -> None:
+    answer = "O art. 1.003, § 5º, do CPC fixa 15 dias para recorrer [cpc:art1003:p5]."
+    result = verify_citations(answer, MORE)
+
+    assert result.removed == []
+    assert result.valid == ["cpc:art1003:p5"]
+
+
+def test_lettered_inciso_id_is_extracted() -> None:
+    assert extract_ids("Vigência em 2021 [lgpd:art65:I-A].") == ["lgpd:art65:I-A"]
+
+
+def test_prose_sumulas_need_the_id_of_their_own_kind() -> None:
+    kept = "A Súmula 385 do STJ afasta o dano moral [stj:sumula:385]. "
+    kept += "A Súmula Vinculante 25 veda a prisão civil do depositário infiel [stf:sv:25]."
+    assert verify_citations(kept, MORE).removed == []
+
+    wrong = "A Súmula Vinculante 385 afasta o dano moral [stj:sumula:385]."
+    result = verify_citations(wrong, MORE)
+    assert result.text == ""
+    assert result.removed[0].reference == "Súmula Vinculante 385"

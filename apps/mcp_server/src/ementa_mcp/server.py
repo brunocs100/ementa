@@ -162,7 +162,9 @@ def build_server(
         annotations=READ_ONLY,
     )
     def get_statute_article(
-        source_id: Annotated[str, Field(description="Id de fonte, como cdc:art49 ou cdc:art42:pu")],
+        source_id: Annotated[
+            str, Field(description="Id de fonte, como cdc:art49, cpc:art220:p1 ou stj:sumula:385")
+        ],
         ctx: Ctx,
     ) -> statutes.StatuteArticleOutput:
         request = statutes.GetStatuteArticleInput(source_id=source_id)
