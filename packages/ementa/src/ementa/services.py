@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from ementa.agents.legal_research import LegalResearchAgent
 from ementa.agents.legal_research.graph import CONTEXT_LIMIT
 from ementa.knowledge import KnowledgeBase
+from ementa.users import UserDirectory
 from ementa_kit.config import get_settings
 from ementa_kit.llm import ModelRegistry
 from ementa_kit.rag import FastEmbedder, FastReranker, PgHybridStore
@@ -55,6 +56,14 @@ def skill_library() -> SkillLibrary:
         allowed_scripts=settings.skill_scripts_allowed,
         script_timeout_s=settings.skill_script_timeout_s,
     )
+
+
+@lru_cache
+def user_directory() -> UserDirectory:
+    """The firm's users, in `firm.users`; the schema is created on first use."""
+    directory = UserDirectory(get_settings().database_url)
+    directory.ensure_schema()
+    return directory
 
 
 @lru_cache

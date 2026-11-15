@@ -1,4 +1,4 @@
-"""`uv run ementa`: corpus ingestion, search and the legal research agent from the terminal."""
+"""`uv run ementa`: corpus ingestion, search, the legal research agent and the demo users."""
 
 import argparse
 import io
@@ -200,6 +200,23 @@ def _smoke_markdown(summary: dict[str, Any], rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _seed_users(args: argparse.Namespace, settings: Settings) -> int:
+    """The six fictitious users, one per role. Their passwords are public, so never in prod."""
+    if settings.is_prod:
+        print("seed-users writes public demo passwords; it does not run in prod.", file=sys.stderr)
+        return 2
+    from ementa.services import user_directory
+    from ementa.users import seed_demo_users
+
+    users = seed_demo_users(user_directory())
+    for user in users:
+        print(f"{user.username:<14} {user.role.value:<14} {user.name}")
+    print(
+        f"{len(users)} fictitious users in firm.users; passwords in docs/SEGURANCA-E-GOVERNANCA.md"
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ementa")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -229,12 +246,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     smoke.add_argument("--report", type=Path, help="write the rows and the summary as JSON")
     smoke.add_argument("--markdown", type=Path, help="write a Markdown table for a PR comment")
 
+    sub.add_parser("seed-users", help="write the six fictitious demo users into firm.users")
+
     args = parser.parse_args(argv)
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(encoding="utf-8")
     settings = get_settings()
     setup(settings)
-    handlers = {"ingest": _ingest, "search": _search, "ask": _ask, "smoke": _smoke}
+    handlers = {
+        "ingest": _ingest,
+        "search": _search,
+        "ask": _ask,
+        "smoke": _smoke,
+        "seed-users": _seed_users,
+    }
     return handlers[args.command](args, settings)
 
 
