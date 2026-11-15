@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from ementa_kit.config import Settings
 from ementa_kit.context import Conversation, Section, build_user_turn
 from ementa_kit.llm import ModelRegistry, ModelRole, ModelUnavailableError
-from ementa_kit.prompts import load_prompt
+from ementa_kit.prompts import PromptRegistry, load_prompt
 
 
 def test_user_turn_puts_sections_first_and_question_last() -> None:
@@ -47,6 +47,53 @@ def test_load_prompt_rejects_bad_files(tmp_path: Path, content: str, error: str)
 
     with pytest.raises(ValueError, match=error):
         load_prompt(path)
+
+
+def write_prompt(root: Path, relative: str, prompt_id: str, version: int, changelog: str) -> None:
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    log = f"changelog: {changelog}\n" if changelog != "-" else ""
+    path.write_text(f"---\nid: {prompt_id}\nversion: {version}\n{log}---\nTexto.\n", "utf-8")
+
+
+def test_prompt_registry_lists_every_prompt_by_id_and_version(tmp_path: Path) -> None:
+    write_prompt(tmp_path, "b/x.v1.md", "b.x", 1, "v1 primeira")
+    write_prompt(tmp_path, "a/y.v2.md", "a.y", 2, "v2 cita a LGPD; v1 primeira")
+    write_prompt(tmp_path, "a/y.v1.md", "a.y", 1, "v1 primeira")
+
+    registry = PromptRegistry.from_dir(tmp_path)
+
+    assert [(p.id, p.version, p.changelog) for p in registry.prompts()] == [
+        ("a.y", 1, "v1 primeira"),
+        ("a.y", 2, "v2 cita a LGPD; v1 primeira"),
+        ("b.x", 1, "v1 primeira"),
+    ]
+    assert registry.get("a.y", 2).text == "Texto.\n"
+    with pytest.raises(LookupError, match=r"unknown prompt a\.y v3"):
+        registry.get("a.y", 3)
+
+
+@pytest.mark.parametrize(
+    ("files", "error"),
+    [
+        (
+            [("a/x.v1.md", "a.x", 1, "v1 um"), ("a/copy.md", "a.x", 1, "v1 cópia")],
+            "a/x.v1.md: a.x v1 is already in a/copy.md",
+        ),
+        ([("a/x.v2.md", "a.x", 2, "v1 primeira versão")], "a/x.v2.md: .* no entry for v2"),
+        ([("a/x.v1.md", "a.x", 1, "")], "no entry for v1"),
+        ([("a/x.v1.md", "a.x", 1, "v10 outra")], "no entry for v1"),
+        ([("a/x.v1.md", "a.x", 1, "-")], r"lacks \['changelog'\]"),
+    ],
+)
+def test_prompt_registry_fails_fast_on_a_duplicate_or_a_missing_changelog(
+    tmp_path: Path, files: list[tuple[str, str, int, str]], error: str
+) -> None:
+    for relative, prompt_id, version, changelog in files:
+        write_prompt(tmp_path, relative, prompt_id, version, changelog)
+
+    with pytest.raises(ValueError, match=error):
+        PromptRegistry.from_dir(tmp_path)
 
 
 def _settings(**values: str) -> Settings:
