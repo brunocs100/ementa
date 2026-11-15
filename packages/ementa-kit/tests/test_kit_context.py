@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -10,8 +10,10 @@ from ementa_kit.config import Settings
 from ementa_kit.context import (
     SIZES_EVENT,
     Conversation,
+    PrefixChangedError,
     Section,
     approx_tokens,
+    assert_append_only,
     build_context,
     build_user_turn,
 )
@@ -59,6 +61,48 @@ def test_conversation_only_grows() -> None:
     assert conversation.sizes() == [7, 2, 3]
     with pytest.raises(ValueError, match="frozen"):
         conversation.append(SystemMessage("outro sistema"))
+
+
+FIRST = [SystemMessage("regras"), HumanMessage("pergunta")]
+
+
+def test_append_only_accepts_requests_that_only_grow() -> None:
+    second = [*FIRST, AIMessage("rascunho"), HumanMessage("corrija")]
+
+    assert_append_only([FIRST, second, second, [*second, AIMessage("final")]])
+    assert_append_only([])
+
+
+@pytest.mark.parametrize(
+    ("second", "error"),
+    [
+        (
+            [SystemMessage("regras novas"), HumanMessage("pergunta")],
+            "request 2 changed message 0 of request 1: "
+            "system text differs from character 6: '' became ' novas'",
+        ),
+        (
+            [SystemMessage("regras"), HumanMessage("pergunta editada")],
+            "changed message 1 of request 1: human text differs from character 8",
+        ),
+        ([HumanMessage("pergunta"), SystemMessage("regras")], "message 0 .*: system became human"),
+        ([SystemMessage("regras")], r"dropped message 1 \(human\) of request 1"),
+        (
+            [SystemMessage("regras"), HumanMessage("pergunta", id="other")],
+            "same text, other fields differ",
+        ),
+    ],
+)
+def test_append_only_fails_when_the_prefix_changes(second: list[BaseMessage], error: str) -> None:
+    with pytest.raises(PrefixChangedError, match=error):
+        assert_append_only([FIRST, second])
+
+
+def test_append_only_points_to_where_a_long_message_changed() -> None:
+    long = "x" * 100
+
+    with pytest.raises(PrefixChangedError, match="from character 100: '' became 'y'"):
+        assert_append_only([[HumanMessage(long)], [HumanMessage(long + "y")]])
 
 
 def test_load_prompt_reads_front_matter(tmp_path: Path) -> None:

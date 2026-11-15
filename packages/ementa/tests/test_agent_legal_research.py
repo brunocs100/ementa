@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.outputs import ChatResult
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -17,7 +17,7 @@ from ementa.ingest.corpus import load_statute
 from ementa.ingest.index import statute_chunks
 from ementa.knowledge import article_of
 from ementa_kit.config import Settings
-from ementa_kit.context import approx_tokens
+from ementa_kit.context import PrefixChangedError, approx_tokens, assert_append_only
 from ementa_kit.llm import ModelRegistry, ModelRole, ModelSpec
 from ementa_kit.rag import Hit
 
@@ -44,12 +44,13 @@ class FakeRetriever:
 
 
 class ScriptedChat(GenericFakeChatModel):
-    """Replies in order and records what it was sent."""
+    """Replies in order and records a copy of what it was sent, so a later in-place edit of a
+    message shows up as a changed prefix."""
 
     calls: list[list[BaseMessage]] = Field(default_factory=list)
 
     def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
-        self.calls.append(list(messages))
+        self.calls.append([m.model_copy(deep=True) for m in messages])
         return super()._generate(messages, *args, **kwargs)
 
 
@@ -91,18 +92,42 @@ def test_answer_with_verified_citation_in_one_attempt() -> None:
     assert context.endswith(f"<pergunta>\n{QUESTION}\n</pergunta>")
 
 
+BAD = "Cabe dano moral pela Súmula 385 [stj:sumula:385]. " + GOOD
+
+
 def test_bad_citation_triggers_one_retry_appending_to_the_conversation() -> None:
-    bad = "Cabe dano moral pela Súmula 385 [stj:sumula:385]. " + GOOD
-    research, chats = make_agent(FakeRetriever(["cdc:art49"]), [bad, GOOD])
+    research, chats = make_agent(FakeRetriever(["cdc:art49"]), [BAD, GOOD])
 
     answer = research.ask(QUESTION)
 
     assert answer.attempts == 2
     assert answer.answer == GOOD
+    assert_append_only(chats[ModelRole.DEFAULT].calls)  # nothing the model saw was edited
     first, second = chats[ModelRole.DEFAULT].calls
-    assert second[: len(first)] == first  # nothing the model saw was edited
     assert len(second) == len(first) + 2  # its own reply, then the verifier's feedback
     assert "stj:sumula:385: fonte fora do contexto recuperado" in second[-1].text
+
+
+def test_prefix_check_catches_a_retry_that_rewrites_the_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A retry that folded the feedback into the first user turn, instead of appending it,
+    would break the provider cache. The prefix check must catch it."""
+
+    def generate_answer(self: LegalResearchAgent, state: graph.State) -> graph.State:
+        system, turn, *rest = state["messages"]
+        if rest:
+            *rest, feedback = rest
+            turn = HumanMessage(f"{turn.text}\n\n{feedback.text}")
+        reply = self.models.chat(ModelRole.DEFAULT).invoke([system, turn, *rest])
+        return {"messages": [reply], "attempts": state.get("attempts", 0) + 1}
+
+    monkeypatch.setattr(LegalResearchAgent, "generate_answer", generate_answer)
+    research, chats = make_agent(FakeRetriever(["cdc:art49"]), [BAD, GOOD])
+
+    assert research.ask(QUESTION).attempts == 2
+    with pytest.raises(PrefixChangedError, match="request 2 changed message 1 of request 1"):
+        assert_append_only(chats[ModelRole.DEFAULT].calls)
 
 
 def test_context_size_of_each_section_goes_to_the_agent_span(
