@@ -3,7 +3,7 @@ name = "ementa-workspace"
 version = "0.0.0"
 description = "Workspace root for the Ementa monorepo"
 requires-python = ">=3.12,<3.13"
-dependencies = ["ementa-kit", "ementa", "ementa-mcp"]
+dependencies = ["ementa-kit", "ementa", "ementa-mcp", "ementa-api"]
 
 [tool.uv]
 package = false
@@ -15,9 +15,11 @@ members = ["packages/*", "apps/*"]
 ementa-kit = { workspace = true }
 ementa = { workspace = true }
 ementa-mcp = { workspace = true }
+ementa-api = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28",
     "hypothesis>=6.140",
     "mypy>=1.18",
     "pytest>=8.4",
@@ -36,7 +38,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 "packages/ementa/src/ementa/ingest/*.py" = ["RUF001"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["ementa", "ementa_kit", "ementa_mcp"]
+known-first-party = ["ementa", "ementa_api", "ementa_kit", "ementa_mcp"]
 
 [tool.mypy]
 python_version = "3.12"
