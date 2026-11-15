@@ -22,6 +22,18 @@ A máquina de dev não tem GPU com CUDA e tem 15 GB de RAM, então o modelo prec
 
 **Experimento registrado.** A F9 registra a escolha no MLflow e a reconfere com as 30 perguntas: modelo, recall@1, @5 e @10, MRR, tempo por mil chunks e RAM. Os embeddings da OpenAI entram como linha de comparação.
 
+## Medição da F1 (15/11/2026)
+
+As 10 perguntas de fumaça (`evals/smoke_cdc.jsonl`), só a busca híbrida com a pergunta original, sem reescrita e sem modelo. CPU do notebook de dev, 118 artigos do CDC. O bge-m3 não está na lista do fastembed 0.9 e ficou para a F9.
+
+| Modelo | Dim | Top 1 | Top 5 | MRR@5 | Indexar o CDC | Por consulta |
+|---|---|---|---|---|---|---|
+| `intfloat/multilingual-e5-large` | 1024 | 8/10 | 9/10 | 0,83 | 142 s | 109 ms |
+| `paraphrase-multilingual-mpnet-base-v2` | 768 | 5/10 | 10/10 | 0,69 | 43 s | 65 ms |
+| `paraphrase-multilingual-MiniLM-L12-v2` | 384 | 6/10 | 9/10 | 0,68 | 7 s | 126 ms |
+
+Escolha: `multilingual-e5-large` (licença MIT), que põe o artigo certo em primeiro em 8 das 10. O mpnet acha todos no top 5, mas ordena pior. A pergunta que o e5 perde sozinha (prazo de indenização por acidente, art. 27) entra no top 5 com a reescrita do agente: com o `legal_research` completo, são 10/10 no top 5 e 10/10 com a citação esperada na resposta. O custo é o download de 2,2 GB e cerca de 2,5 minutos para indexar em CPU, aceitável para um corpus que muda pouco. O MiniLM fica para o CI, se um teste precisar de embedding real.
+
 ## Alternativas consideradas
 
 | Alternativa | A favor | Contra | Por que não agora |

@@ -321,13 +321,11 @@ FOR SELECT USING (
 
 A aplicação faz `SET LOCAL app.user_id = '<id>'` em cada transação; o papel da aplicação não tem `BYPASSRLS`.
 
-Busca textual em português sem acento, numa configuração própria:
+Busca textual em português sem acento: o acento sai no Python (`ementa_kit.rag.fold`), no documento e na consulta, antes do `to_tsvector('portuguese', ...)`. Assim a busca não depende da extensão `unaccent` estar instalada (decisão da F1, ver [ADR 0003](adr/0003-postgres-pgvector-busca-hibrida.md)):
 
 ```sql
-CREATE EXTENSION IF NOT EXISTS unaccent;
-CREATE TEXT SEARCH CONFIGURATION pt_unaccent (COPY = portuguese);
-ALTER TEXT SEARCH CONFIGURATION pt_unaccent
-    ALTER MAPPING FOR hword, hword_part, word WITH unaccent, portuguese_stem;
+search_text text NOT NULL,  -- título, caminho e texto, em minúsculas e sem acento
+tsv tsvector GENERATED ALWAYS AS (to_tsvector('portuguese', search_text)) STORED
 ```
 
 ## Grafo de conhecimento
@@ -405,34 +403,36 @@ budget:
 | Parsing | Lei, título, capítulo, artigo, parágrafo e inciso; id canônico (`cdc:art42:pu`) | F1 |
 | Chunk | Um por artigo, com o caminho completo no cabeçalho; artigo longo dividido por parágrafo | F1 |
 | Embedding | Modelo multilíngue local; versão gravada na linhagem | F1 |
-| Índice | HNSW no `embedding`, GIN no `tsv` com `pt_unaccent` | F1 |
+| Índice | HNSW no `embedding`, GIN no `tsv` (português, acento tirado no Python) | F1 |
 | Consulta | Citação explícita vira busca direta; senão multi-query com sinônimos jurídicos | F1 |
 | Busca | Vetorial e textual, top 30 cada, fusão RRF com k = 60 | F1 |
 | Rerank | Cross-encoder, top 8 | F2 |
 | Grafo | Súmulas e decisões ligadas aos artigos recuperados | F5 |
 | Permissão | RLS no próprio banco | F1 (corpus público), F6 (processos) |
 
-Fusão RRF numa consulta só:
+Fusão RRF numa consulta só (versão resumida; a completa está em `ementa_kit/rag/store.py`). Os termos da consulta textual entram com OU, não com E, porque a pergunta vem em linguagem natural:
 
 ```sql
 WITH vec AS (
-    SELECT id, row_number() OVER (ORDER BY embedding <=> $1) AS r
-    FROM knowledge.chunks
-    ORDER BY embedding <=> $1
-    LIMIT 30
+    SELECT id, row_number() OVER (ORDER BY distance, id) AS r
+    FROM (SELECT id, embedding <=> $1 AS distance
+          FROM knowledge.chunks ORDER BY distance LIMIT 30) AS nearest
+), query AS (
+    SELECT replace(plainto_tsquery('portuguese', $2)::text, '&', '|')::tsquery AS tsq
 ), txt AS (
-    SELECT id, row_number() OVER (ORDER BY ts_rank_cd(tsv, q) DESC) AS r
-    FROM knowledge.chunks, websearch_to_tsquery('pt_unaccent', $2) AS q
-    WHERE tsv @@ q
-    ORDER BY ts_rank_cd(tsv, q) DESC
+    SELECT c.id, row_number() OVER (ORDER BY ts_rank_cd(c.tsv, q.tsq) DESC, c.id) AS r
+    FROM knowledge.chunks c, query q
+    WHERE c.tsv @@ q.tsq
+    ORDER BY ts_rank_cd(c.tsv, q.tsq) DESC, c.id
     LIMIT 30
 )
-SELECT id, sum(1.0 / (60 + r)) AS score
-FROM (SELECT * FROM vec UNION ALL SELECT * FROM txt) AS u
-GROUP BY id
+SELECT id, coalesce(1.0 / (60 + vec.r), 0) + coalesce(1.0 / (60 + txt.r), 0) AS score
+FROM vec FULL OUTER JOIN txt USING (id)
 ORDER BY score DESC
 LIMIT 8;
 ```
+
+Com várias consultas (a pergunta e as reescritas do modelo `fast`), cada uma roda essa busca e o Python funde os rankings de novo por RRF.
 
 ## Engenharia de prompt e de contexto
 

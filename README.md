@@ -5,7 +5,7 @@ Plataforma de agentes de IA para escritórios de advocacia. Faz pesquisa jurídi
 ![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB) ![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-green) ![Status](https://img.shields.io/badge/status-em%20constru%C3%A7%C3%A3o-orange)
 
 > [!IMPORTANT]
-> Projeto em construção. Esta versão traz o plano, a arquitetura e as decisões; o código entra por fases, e a primeira demo (Marco 1) está prevista para 19/11/2026. Os dados de clientes são fictícios e nada aqui é aconselhamento jurídico.
+> Projeto em construção. O código entra por fases: a F0 (fundação) e a maior parte da F1 (pesquisa no CDC com citação verificada e cálculo de prazo, pelo MCP) já rodam; a demo do Marco 1 está prevista para 19/11/2026. Os dados de clientes são fictícios e nada aqui é aconselhamento jurídico.
 
 ## O que é
 
@@ -134,12 +134,14 @@ As fases, tarefas e critérios de aceite estão em [docs/PLANO.md](docs/PLANO.md
 ## Como rodar
 
 > [!NOTE]
-> Disponível a partir do Marco 1. Os comandos abaixo são o alvo da F0 e da F1.
+> Precisa de Docker (Postgres e Grafana) e de uma chave da OpenAI no `.env` (modelo em `.env.example`). Na primeira execução, o modelo de embeddings (cerca de 2,2 GB) é baixado.
 
 ```powershell
 uv sync
 docker compose --profile core --profile obs up -d
 uv run ementa ingest cdc
+uv run ementa ask "Comprei pela internet e me arrependi. Tenho quanto tempo para desistir?"
+uv run ementa smoke
 uv run pytest -m "not eval"
 ```
 

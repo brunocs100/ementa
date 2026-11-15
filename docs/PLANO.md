@@ -146,20 +146,20 @@ flowchart LR
 
 - [x] Snapshot do CDC (Lei 8.078/1990) em `data/corpus/raw/` com URL, data e hash
 - [x] Parser por artigo, parágrafo e inciso, com ids canônicos (`cdc:art49`, `cdc:art42:pu`, `cdc:art26:II`)
-- [ ] Schema `knowledge` com `sources` e `chunks` (`embedding` HNSW, `tsv` GIN com configuração portuguesa e unaccent)
-- [ ] Embeddings multilíngues locais e comando `uv run ementa ingest cdc`
-- [ ] Busca vetorial e textual (top 30 cada) com fusão RRF (k = 60) numa consulta SQL
-- [ ] Grafo `legal_research`: `parse_question`, `direct_lookup`, `rewrite_queries`, `retrieve`, `assemble_context`, `generate_answer`, `verify_citations`, `finalize`, com uma nova tentativa
+- [x] Schema `knowledge` com `sources` e `chunks` (`embedding` HNSW, `tsv` GIN com configuração portuguesa; o acento sai no Python, sem depender do `unaccent`)
+- [x] Embeddings multilíngues locais e comando `uv run ementa ingest cdc`
+- [x] Busca vetorial e textual (top 30 cada) com fusão RRF (k = 60) numa consulta SQL
+- [x] Grafo `legal_research`: `parse_question`, `direct_lookup`, `rewrite_queries`, `retrieve`, `assemble_context`, `generate_answer`, `verify_citations`, `finalize`, com uma nova tentativa
 - [x] Verificador: extrai citações, compara com os ids recuperados, remove e avisa o que não bate
-- [ ] Prompt `legal_research.answer` v1 em arquivo versionado; id e versão no span
-- [ ] Montador de contexto v1 com seções fixas e histórico só de acréscimo
+- [x] Prompt `legal_research.answer` v1 em arquivo versionado; id e versão no span
+- [x] Montador de contexto v1 com seções fixas e histórico só de acréscimo
 - [x] `calculate_deadline` com CPC arts. 219, 220 e 224, feriados nacionais e do RS, premissas na saída
-- [ ] Servidor MCP stdio com `search_legal_corpus`, `answer_legal_question`, `get_statute_article`, `calculate_deadline`
+- [x] Servidor MCP stdio com `search_legal_corpus`, `answer_legal_question`, `get_statute_article`, `calculate_deadline`
 - [ ] Spans `invoke_agent`, `retrieval`, `chat`, `execute_tool`, `guardrail`, com a instrumentação da OpenAI
-- [ ] 10 perguntas de fumaça em `evals/smoke_cdc.jsonl` e comando para rodá-las
+- [x] 10 perguntas de fumaça em `evals/smoke_cdc.jsonl` e comando para rodá-las (`uv run ementa smoke`)
 - [ ] Teste de integração da busca no CI com Postgres de serviço
 
-**Status:** em andamento. Prontos e testados: snapshot e parser do CDC, verificador de citações, `calculate_deadline` (o caso fixo dá 26/01/2027) e o servidor MCP com `calculate_deadline` e `get_statute_article`, conferido via stdio. Esperam o Docker e a chave da OpenAI: a busca híbrida, o agente `legal_research`, `search_legal_corpus`, `answer_legal_question`, os traces e as perguntas de fumaça.
+**Status:** em andamento, quase pronta. Rodando e conferido em 15/11/2026: as 4 ferramentas pelo MCP via stdio; as 10 perguntas de fumaça com o agente trazem a citação esperada no top 5 e na resposta (10/10, nenhuma citação removida, 4 a 11 s e cerca de US$ 0,004 por pergunta); o caso fixo de prazo dá 26/01/2027; os spans saem num trace só (`invoke_agent`, `chat`, `retrieval`, `guardrail`, `execute_tool`). Sem o Docker, a busca foi testada num Postgres 16 com pgvector 0.6 local (pacote `pgserver`, fora do repositório). Faltam: ver o trace no Grafana e o CI verde (precisam do Docker e do repositório no GitHub). Decisões tomadas aqui: Chat Completions em vez da Responses API ([ADR 0005](adr/0005-camada-de-modelos-agnostica.md)), acento tirado no Python em vez do `unaccent` ([ADR 0003](adr/0003-postgres-pgvector-busca-hibrida.md)) e `multilingual-e5-large` como embedding ([ADR 0010](adr/0010-embeddings-e-rerank-locais.md)).
 
 **Critérios de aceite:** as 10 perguntas trazem a citação esperada no top 5; nenhuma resposta mostra citação não verificada; o caso fixo de prazo (intimação em 03/12/2026, 15 dias úteis, TJRS) devolve 26/01/2027; o Copilot do VS Code lista e chama as 4 ferramentas; o trace completo aparece no Grafana; CI verde.
 

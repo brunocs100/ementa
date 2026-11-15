@@ -43,7 +43,7 @@ Três forças mudam rápido: modelos, preços e provedores. Um escritório (ou u
 - resultado de ferramenta é truncado antes de o modelo ver;
 - compactar é começar outra conversa a partir de um resumo.
 
-Na OpenAI, a Responses API roda com `store: false`, e o raciocínio criptografado é devolvido intacto a cada turno (nomes de parâmetro: conferir na F1). Isso mantém o cache de prompt e deixa a troca de provedor segura: o Claude, por exemplo, recusa com erro 400 um histórico editado que carrega blocos de raciocínio (conferir na documentação da Anthropic).
+Na OpenAI, a Responses API roda com `store: false`, e o raciocínio criptografado é devolvido intacto a cada turno (nomes de parâmetro: conferir na F1). Conferido na F1: a instrumentação `opentelemetry-instrumentation-openai-v2` (2.4b0) cobre Chat Completions e embeddings, não a Responses API. Por isso a F1 usa Chat Completions, que não guarda a conversa no provedor por padrão; o `legal_research` da F1 tem uma pergunta e no máximo uma nova tentativa, então não precisa devolver raciocínio entre turnos. A troca para a Responses API fica para quando o agente tiver vários turnos (F3), com o span `chat` feito à mão se a instrumentação ainda não cobrir. Isso mantém o cache de prompt e deixa a troca de provedor segura: o Claude, por exemplo, recusa com erro 400 um histórico editado que carrega blocos de raciocínio (conferir na documentação da Anthropic).
 
 Exemplo de configuração:
 

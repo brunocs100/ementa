@@ -251,7 +251,7 @@ Metas: bloqueio de pelo menos 95% dos ataques, com no máximo 5% de falso positi
 | Segurança | art. 46 | RLS, criptografia em trânsito, segredos fora do repo, auditoria |
 | Incidente | art. 48 | Runbook abaixo, com comunicação à ANPD e ao titular |
 
-Retenção: a Responses API é chamada com `store: false`, para o provedor não guardar a resposta (conferir política de retenção vigente na F1). Os dados de cliente do projeto são fictícios.
+Retenção: na F1 as chamadas usam Chat Completions sem `store` (o padrão é não guardar a conversa no provedor); quando a Responses API entrar, ela vai com `store: false`. A política de retenção do provedor para monitoramento de abuso continua valendo e é conferida na F6. Os dados de cliente do projeto são fictícios.
 
 ## Runbook de incidente
 

@@ -29,12 +29,15 @@ uv sync                                          # instala tudo do workspace
 docker compose --profile core --profile obs up -d   # Postgres e Grafana LGTM
 uv run ruff check . ; uv run ruff format --check .
 uv run mypy packages apps
-uv run pytest -m "not eval"                      # unitários e integração
+uv run pytest -m "not eval"                      # unitários; integração com EMENTA_TEST_DATABASE_URL
 
 # A partir da F1
-uv run ementa ingest cdc                         # carrega o corpus do CDC
+uv run ementa ingest cdc                         # carrega o CDC no Postgres (--reset recria o schema)
+uv run ementa search "cobrança indevida"         # busca híbrida, sem modelo
+uv run ementa ask "Posso desistir da compra online?"   # agente legal_research (gasta API)
+uv run ementa smoke --retrieval-only             # 10 perguntas de fumaça, só a busca
+uv run ementa smoke                              # as 10 com o agente (cerca de US$ 0,10)
 uv run ementa-mcp                                # servidor MCP via stdio
-uv run pytest -m eval                            # avaliações (gastam API, têm teto)
 ```
 
 ## Convenções
