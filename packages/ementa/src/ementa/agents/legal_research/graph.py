@@ -1,6 +1,6 @@
 """`legal_research`: agentic RAG over the legal corpus, with a citation check and one retry.
 
-parse_question -> direct_lookup (explicit article) or rewrite_queries -> retrieve
+parse_question -> direct_lookup (explicit article or súmula) or rewrite_queries -> retrieve
 -> assemble_context -> generate_answer -> verify_citations -> finalize, or back to
 generate_answer once with the verifier's findings appended as a new message.
 """
@@ -35,10 +35,32 @@ NO_BASIS = (
     "A pergunta precisa de pesquisa do advogado."
 )
 
-_EXPLICIT = re.compile(r"\bart(?:igo)?s?\.?\s*(\d+)(?:\s*-\s*([A-Z]))?", re.IGNORECASE)
-_OTHER_LAW = re.compile(
-    r"\b(cpc|c[óo]digo civil|c[óo]digo de processo|constitui[çc][ãa]o|cf|clt|lei n)", re.IGNORECASE
+_NUMBER = r"\d{1,3}(?:\.\d{3})+|\d+"  # 1.003 or 219
+_ONE_ARTICLE = rf"(?:{_NUMBER})\s*[º°]?(?:-[A-Za-z]\b)?"
+_LIST = r"\s*(?:,|\be\b|\bou\b)\s*"
+_ARTICLES = re.compile(
+    rf"\bart(?:igo)?s?\.?\s*({_ONE_ARTICLE}(?:{_LIST}{_ONE_ARTICLE})*)", re.IGNORECASE
 )
+_ARTICLE_NUMBER = re.compile(rf"({_NUMBER})\s*[º°]?(?:-([A-Za-z])\b)?")
+_SUMULAS = re.compile(
+    rf"\bs[úu]mulas?\s+(vinculantes?\s+)?(?:n[º°o.]*\s*)?(\d+(?:{_LIST}\d+)*)", re.IGNORECASE
+)
+_SV = re.compile(rf"\bSVs?\s*(?:n[º°o.]*\s*)?(\d+(?:{_LIST}\d+)*)")
+_LAW_NUMBER = r"\blei\s+(?:n[º°o.]*\s*)?"
+_LAWS = {
+    "cdc": rf"\bcdc\b|c[óo]digo de defesa do consumidor|{_LAW_NUMBER}8\.?078\b",
+    "lgpd": rf"\blgpd\b|lei (?:geral )?de prote[çc][ãa]o de dados|{_LAW_NUMBER}13\.?709\b",
+    "cpc": rf"\bn?cpc\b|c[óo]digo de processo civil|{_LAW_NUMBER}13\.?105\b",
+    # Laws outside the corpus: an article of one of them is not looked up.
+    "other": (
+        r"c[óo]digo (?:civil|penal|de processo penal|tribut[áa]rio|eleitoral)|\bcc\b|\bcpp?\b"
+        r"|\bclt\b|\bctn\b|\beca\b|\bcf\b|\bcrfb\b|constitui[çc][ãa]o|estatuto"
+        rf"|decreto|resolu[çc][ãa]o|medida provis[óo]ria|lei complementar|{_LAW_NUMBER}[\d.]+"
+    ),
+}
+_COURTS = {"stj": r"\bstj\b|superior tribunal de justi[çc]a", "stf": r"\bstf\b|supremo"}
+_STOP = re.compile(r"[.;!?](?!\d)|\bart(?:igo)?s?\.?\s*\d|\bs[úu]mula|\bSV\s*\d", re.IGNORECASE)
+_WINDOW = 40  # how far after a reference its law or court may be named
 _BULLET = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s*")
 
 tracer = get_tracer(__name__)
@@ -86,15 +108,64 @@ class ResearchAnswer:
         return bool(self.citations)
 
 
+Mention = tuple[int, int, str]  # start, end, name
+
+
+def _mentions(text: str, patterns: dict[str, str]) -> list[Mention]:
+    """Where each law or court is named. A corpus law wins over "other" on the same words."""
+    found = [
+        (m.start(), m.end(), name)
+        for name, pattern in patterns.items()
+        for m in re.finditer(pattern, text, re.IGNORECASE)
+    ]
+    named = [f for f in found if f[2] != "other"]
+    return sorted(
+        f for f in found if f[2] != "other" or not any(s < f[1] and f[0] < e for s, e, _ in named)
+    )
+
+
+def _owner(text: str, match: re.Match[str], mentions: list[Mention]) -> str | None:
+    """The law or court named right after a reference ("art. 49 do CDC"), else the last one
+    named before it ("No CPC, o art. 219"), else None."""
+    stop = _STOP.search(text, match.end())
+    limit = min(stop.start() if stop else len(text), match.end() + _WINDOW)
+    after = [name for start, _, name in mentions if match.end() <= start < limit]
+    if after:
+        return after[0]
+    before = [name for _, end, name in mentions if end <= match.start()]
+    return before[-1] if before else None
+
+
 def explicit_ids(question: str) -> list[str]:
-    """Articles named in the question ("art. 49 do CDC"). Only the CDC is in the corpus in F1."""
-    if _OTHER_LAW.search(question):
-        return []
-    ids = []
-    for m in _EXPLICIT.finditer(question):
-        number = m.group(1) + (f"-{m.group(2).upper()}" if m.group(2) else "")
-        ids.append(f"cdc:art{number}")
-    return list(dict.fromkeys(ids))
+    """Articles and súmulas named in the question, as source ids, in the order they appear.
+
+    "art. 49 do CDC" is `cdc:art49`, "arts. 219 e 224 do CPC" are `cpc:art219` and `cpc:art224`,
+    "Súmula 385 do STJ" is `stj:sumula:385`, "Súmula Vinculante 13" or "SV 13" is `stf:sv:13`.
+    An article with no law named is a CDC article, as in F1. Articles of laws outside the corpus
+    (Código Civil, Constituição) and súmulas of the STF that are not vinculantes are left out; a
+    súmula with no court named is an STJ súmula only when the question names the STJ.
+    """
+    laws, courts = _mentions(question, _LAWS), _mentions(question, _COURTS)
+    found: list[tuple[int, str]] = []
+    for m in _ARTICLES.finditer(question):
+        law = _owner(question, m, laws) or "cdc"
+        if law == "other":
+            continue
+        for n in _ARTICLE_NUMBER.finditer(m.group(1)):
+            letter = f"-{n.group(2).upper()}" if n.group(2) else ""
+            found.append((m.start(), f"{law}:art{n.group(1).replace('.', '')}{letter}"))
+    for m in _SUMULAS.finditer(question):
+        court = _owner(question, m, courts)
+        if m.group(1):
+            prefix = "stf:sv"
+        elif court == "stj" or (court is None and any(c[2] == "stj" for c in courts)):
+            prefix = "stj:sumula"
+        else:
+            continue
+        found.extend((m.start(), f"{prefix}:{n}") for n in re.findall(r"\d+", m.group(2)))
+    for m in _SV.finditer(question):
+        found.extend((m.start(), f"stf:sv:{n}") for n in re.findall(r"\d+", m.group(1)))
+    return list(dict.fromkeys(i for _, i in sorted(found, key=lambda f: f[0])))
 
 
 def render_source(hit: Hit) -> str:

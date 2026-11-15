@@ -12,7 +12,7 @@ tracer = get_tracer(__name__)
 
 
 def article_of(source_id: str) -> str:
-    """`cdc:art49:pu` -> `cdc:art49`, the chunk that holds it."""
+    """`cdc:art49:pu` -> `cdc:art49`, the chunk that holds it. A súmula is its own chunk."""
     match = _ARTICLE_OF.match(source_id)
     return match.group(1) if match else source_id
 

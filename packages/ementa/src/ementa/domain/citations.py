@@ -2,7 +2,8 @@
 
 The prompt asks for every legal reference to carry its source id in brackets, as in
 "[cdc:art49]". A sentence is removed when it cites an id outside the context, or when it mentions
-an article or a súmula in prose without the matching id next to it.
+an article or a súmula in prose without the matching id next to it: "art. 1.003" needs an id of
+`art1003`, "Súmula 385" one ending in `:sumula:385`, "Súmula Vinculante 13" one ending in `:sv:13`.
 """
 
 import re
@@ -10,8 +11,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 _ID = re.compile(r"\[([a-z]+(?::[A-Za-z0-9-]+)+)\]")
-_PROSE_ARTICLE = re.compile(r"\bart(?:igo)?s?\.?\s*(\d+(?:-[A-Z])?)", re.IGNORECASE)
-_PROSE_SUMULA = re.compile(r"\bs[úu]mula\s+(?:vinculante\s+)?(?:n[º°o.]*\s*)?(\d+)", re.IGNORECASE)
+_PROSE_ARTICLE = re.compile(
+    r"\bart(?:igo)?s?\.?\s*(\d{1,3}(?:\.\d{3})+|\d+)((?:-[A-Z])?)", re.IGNORECASE
+)
+_PROSE_SUMULA = re.compile(r"\bs[úu]mula\s+(vinculante\s+)?(?:n[º°o.]*\s*)?(\d+)", re.IGNORECASE)
 _ABBREVIATIONS = {
     "art",
     "arts",
@@ -82,11 +85,13 @@ def _check_sentence(
     # is outside the context, the problem is already reported above.
     prose = _ID.sub(" ", sentence)
     for m in _PROSE_ARTICLE.finditer(prose):
-        if not any(re.search(rf":art{re.escape(m.group(1))}(?::|$)", v) for v in ids):
-            problems.append(RemovedCitation(f"art. {m.group(1)}", sentence, _UNBACKED))
+        number = m.group(1).replace(".", "") + m.group(2).upper()
+        if not any(re.search(rf":art{re.escape(number)}(?::|$)", v) for v in ids):
+            problems.append(RemovedCitation(f"art. {m.group(1)}{m.group(2)}", sentence, _UNBACKED))
     for m in _PROSE_SUMULA.finditer(prose):
-        if not any(v.endswith(f":sumula:{m.group(1)}") for v in ids):
-            problems.append(RemovedCitation(f"Súmula {m.group(1)}", sentence, _UNBACKED))
+        kind, label = (":sv:", "Súmula Vinculante") if m.group(1) else (":sumula:", "Súmula")
+        if not any(v.endswith(f"{kind}{m.group(2)}") for v in ids):
+            problems.append(RemovedCitation(f"{label} {m.group(2)}", sentence, _UNBACKED))
     return valid, problems
 
 
