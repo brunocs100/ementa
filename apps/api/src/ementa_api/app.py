@@ -1,12 +1,13 @@
 """Routes of the REST API. Dependencies are built lazily, so the app starts without a database."""
 
 from collections.abc import Callable
-from typing import Protocol
+from typing import Annotated, Protocol
 
 import psycopg
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Path
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from langgraph.store.base import BaseStore
+from pydantic import BaseModel, Field
 
 from ementa import services
 from ementa.agents.legal_research import ResearchAnswer
@@ -15,6 +16,7 @@ from ementa.tools.research import (
     AnswerLegalQuestionInput,
     AnswerLegalQuestionOutput,
 )
+from ementa_api.auth import Role, require_roles
 from ementa_api.problems import (
     Problem,
     install_problem_handlers,
@@ -22,10 +24,22 @@ from ementa_api.problems import (
     problem_responses,
 )
 from ementa_kit.config import get_settings
+from ementa_kit.memory import SUBJECT_ID_PATTERN, forget_subject
+
+FORGET_DESCRIPTION = (
+    "Direito do titular (LGPD, art. 18): apaga todas as memórias que citam a pessoa, em todos "
+    "os namespaces, e devolve quantas saíram. O id é o pseudônimo `ds_...` que etiqueta as "
+    "memórias (HMAC do CPF, do nome ou do e-mail), nunca o dado em si. Nada pessoal fica "
+    "registrado. Só DPO e sócia."
+)
 
 
 class Researcher(Protocol):
     def ask(self, question: str) -> ResearchAnswer: ...
+
+
+class Forgotten(BaseModel):
+    removed: int = Field(description="Memórias apagadas; 0 se o titular já não tinha nenhuma.")
 
 
 class Health(BaseModel):
@@ -47,6 +61,7 @@ def corpus_chunks() -> int:
 def create_app(
     researcher: Callable[[], Researcher] = services.private_legal_research,
     chunks: Callable[[], int] = corpus_chunks,
+    memory: Callable[[], BaseStore] = services.memory_store,
 ) -> FastAPI:
     app = FastAPI(
         title="Ementa API",
@@ -65,6 +80,22 @@ def create_app(
     )
     def legal_research(body: AnswerLegalQuestionInput) -> AnswerLegalQuestionOutput:
         return AnswerLegalQuestionOutput.from_answer(researcher().ask(body.question))
+
+    @app.delete(
+        "/v1/data-subjects/{subject_id}/memories",
+        response_model=Forgotten,
+        responses=problem_responses(403, 422, 500),
+        dependencies=[Depends(require_roles(Role.DPO, Role.SOCIA))],
+        summary="Apaga as memórias de um titular de dados",
+        description=FORGET_DESCRIPTION,
+        tags=["lgpd"],
+    )
+    def forget_data_subject(
+        subject_id: Annotated[
+            str, Path(pattern=SUBJECT_ID_PATTERN, description="Pseudônimo do titular, `ds_...`")
+        ],
+    ) -> Forgotten:
+        return Forgotten(removed=forget_subject(memory(), subject_id))
 
     @app.get("/healthz", response_model=Health, tags=["ops"], summary="O processo está de pé")
     def healthz() -> Health:

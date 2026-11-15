@@ -71,6 +71,75 @@
         }
       }
     },
+    "/v1/data-subjects/{subject_id}/memories": {
+      "delete": {
+        "tags": [
+          "lgpd"
+        ],
+        "summary": "Apaga as memórias de um titular de dados",
+        "description": "Direito do titular (LGPD, art. 18): apaga todas as memórias que citam a pessoa, em todos os namespaces, e devolve quantas saíram. O id é o pseudônimo `ds_...` que etiqueta as memórias (HMAC do CPF, do nome ou do e-mail), nunca o dado em si. Nada pessoal fica registrado. Só DPO e sócia.",
+        "operationId": "forget_data_subject_v1_data_subjects__subject_id__memories_delete",
+        "parameters": [
+          {
+            "name": "subject_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^ds_[0-9a-f]{32}$",
+              "description": "Pseudônimo do titular, `ds_...`",
+              "title": "Subject Id"
+            },
+            "description": "Pseudônimo do titular, `ds_...`"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forgotten"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -269,6 +338,20 @@
           "type"
         ],
         "title": "FieldError"
+      },
+      "Forgotten": {
+        "properties": {
+          "removed": {
+            "type": "integer",
+            "title": "Removed",
+            "description": "Memórias apagadas; 0 se o titular já não tinha nenhuma."
+          }
+        },
+        "type": "object",
+        "required": [
+          "removed"
+        ],
+        "title": "Forgotten"
       },
       "Health": {
         "properties": {

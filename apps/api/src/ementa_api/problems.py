@@ -1,7 +1,8 @@
 """Errors as RFC 9457 problem details (`application/problem+json`).
 
 Validation errors list where the request is wrong, never the values sent: a question can carry
-personal data, and error bodies end up in logs.
+personal data, and error bodies end up in logs. For the same reason `instance` is the template of
+the matched route, not the path as sent, which could hold a CPF typed in by mistake.
 """
 
 from http import HTTPStatus
@@ -45,6 +46,12 @@ def _title(status: int) -> str:
     return HTTPStatus(status).phrase
 
 
+def _instance(request: Request) -> str:
+    """`/v1/data-subjects/{subject_id}/memories`, or the path as sent when no route matched."""
+    path = getattr(request.scope.get("route"), "path", None)
+    return path if isinstance(path, str) else request.url.path
+
+
 def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
     """OpenAPI `responses` entries for the given statuses, all with the Problem schema."""
     return {
@@ -71,7 +78,7 @@ async def _validation(request: Request, exc: Exception) -> JSONResponse:
             title="Invalid request",
             status=422,
             detail="The request does not match the schema; see `errors`.",
-            instance=request.url.path,
+            instance=_instance(request),
             errors=errors,
         )
     )
@@ -89,7 +96,7 @@ async def _http(request: Request, exc: Exception) -> JSONResponse:
             title=_title(exc.status_code),
             status=exc.status_code,
             detail=detail,
-            instance=request.url.path,
+            instance=_instance(request),
         )
     )
 
@@ -101,13 +108,13 @@ async def _model_unavailable(request: Request, exc: Exception) -> JSONResponse:
             title="Model unavailable",
             status=503,
             detail="The language model is not configured or not reachable.",
-            instance=request.url.path,
+            instance=_instance(request),
         )
     )
 
 
 async def _unexpected(request: Request, exc: Exception) -> JSONResponse:
-    return problem_response(Problem(title=_title(500), status=500, instance=request.url.path))
+    return problem_response(Problem(title=_title(500), status=500, instance=_instance(request)))
 
 
 def install_problem_handlers(app: FastAPI) -> None:
