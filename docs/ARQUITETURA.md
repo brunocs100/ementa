@@ -436,7 +436,7 @@ Com várias consultas (a pergunta e as reescritas do modelo `fast`), cada uma ro
 
 ## Engenharia de prompt e de contexto
 
-Prompts são arquivos versionados em `packages/ementa/src/ementa/prompts/`, com id, versão e changelog. Cada span de chamada grava `ementa.prompt.id` e `ementa.prompt.version`; mudou o prompt, roda a avaliação.
+Prompts são arquivos versionados em `packages/ementa/src/ementa/prompts/`, com id, versão e changelog. Cada span de chamada grava `ementa.prompt.id` e `ementa.prompt.version`; mudou o prompt, roda a avaliação. O `PromptRegistry` do kit carrega todos de uma vez e falha ao montar se dois arquivos tiverem o mesmo id e versão ou se o changelog não tiver a entrada da própria versão (`v2 ...` no changelog da versão 2); `get_prompt` lê dele.
 
 O montador de contexto (`ementa_kit.context`) monta cada chamada a partir de seções com orçamento de tokens:
 
@@ -451,7 +451,7 @@ O montador de contexto (`ementa_kit.context`) monta cada chamada a partir de se�
 | 7 | Últimos turnos e resultados de ferramenta | 2.000 | Resultado truncado antes de entrar |
 | 8 | Pergunta | — | Sempre por último |
 
-O tamanho de cada seção vai como evento no trace (`ementa.context.section_tokens`). As técnicas aparecem com nome: escrever (estado e rascunho no grafo), selecionar (busca, memória e skills sob demanda), comprimir (truncar resultado, resumir conversa) e isolar (cada subagente com o próprio contexto).
+O tamanho de cada seção vai como evento no trace: `build_context` grava `ementa.context.section_tokens` no span corrente (no `legal_research`, o `invoke_agent`), com `<seção>.chars` e `<seção>.tokens` para `system`, cada seção e a `pergunta`. Os tokens são aproximados, 4 caracteres por token; o número exato é o uso que o provedor devolve no span `chat`. As técnicas aparecem com nome: escrever (estado e rascunho no grafo), selecionar (busca, memória e skills sob demanda), comprimir (truncar resultado, resumir conversa) e isolar (cada subagente com o próprio contexto).
 
 Regras do histórico só de acréscimo:
 
@@ -463,7 +463,7 @@ Regras do histórico só de acréscimo:
 - O raciocínio criptografado da OpenAI volta intacto a cada turno.
 - O estado completo fica no checkpointer para auditoria; a visão que vai ao modelo é derivada dele.
 
-O motivo é duplo: o cache de prompt só funciona com prefixo estável, e alguns provedores recusam histórico editado (o Claude devolve erro 400 quando o prefixo de um bloco de raciocínio muda; conferir na documentação da Anthropic). Um teste no CI compara pedidos consecutivos e falha se o prefixo mudar (F2).
+O motivo é duplo: o cache de prompt só funciona com prefixo estável, e alguns provedores recusam histórico editado (o Claude devolve erro 400 quando o prefixo de um bloco de raciocínio muda; conferir na documentação da Anthropic). Um teste no CI compara pedidos consecutivos e falha se o prefixo mudar (F2): `assert_append_only` (`ementa_kit.context`) recebe os pedidos que um modelo falso gravou e aponta a mensagem e o caractere que mudaram; o caminho de nova tentativa do `legal_research` passa por ele.
 
 ## Memória
 
@@ -497,7 +497,7 @@ O motivo é duplo: o cache de prompt só funciona com prefixo estável, e alguns
 |---|---|
 | Servidor | `ementa-mcp`, SDK oficial em Python, spec 2026-07-28 (sem estado: sem handshake nem sessão; conferir na F1) |
 | Transportes | stdio local (F1); HTTP atrás de balanceador (F2) |
-| Ferramentas | `search_legal_corpus`, `answer_legal_question`, `get_statute_article`, `calculate_deadline` (F1); `review_contract` (F4); `lookup_case`, `check_conflict` (F5); `query_firm_analytics` (F6) |
+| Ferramentas | `search_legal_corpus`, `answer_legal_question`, `get_statute_article`, `calculate_deadline` (F1); `list_skills`, `load_skill` (F2); `review_contract` (F4); `lookup_case`, `check_conflict` (F5); `query_firm_analytics` (F6) |
 | Recursos | `ementa://statutes/{id}/articles/{n}`, `ementa://templates/{kind}`, `ementa://playbooks/contracts` |
 | Prompts | `review-contract`, `summarize-case` |
 | Autenticação | stdio sem token; HTTP com JWT (F3) e OAuth (F6) |
@@ -525,6 +525,17 @@ O cliente MCP de terceiro (Copilot, Claude Desktop) é tratado como modelo de nu
 | Desenvolvimento | `.github/skills/<nome>/SKILL.md` | `new-mcp-tool`, `new-legal-skill`, `new-eval-case`, `investigate-trace` | Copilot e Claude Code trabalhando no repo |
 
 Os dois tipos seguem o padrão aberto Agent Skills. O loader do kit faz divulgação progressiva: o prompt recebe só nome e descrição; a ferramenta `load_skill` traz as instruções completas quando o agente precisa; scripts rodam só se estiverem na lista permitida, com tempo limite.
+
+O loader de runtime (`ementa_kit.skills`, F2):
+
+| Item | Como funciona |
+|---|---|
+| Onde | `skills/<nome>/SKILL.md` na raiz do repositório (`ementa.services.SKILLS_DIR`); `services.skill_library()` monta a biblioteca uma vez por processo |
+| Formato | Front matter YAML com `name` (igual ao nome da pasta; minúsculas, dígitos e hífen simples; até 64 caracteres) e `description` (até 1.024); opcionais `license`, `compatibility`, `metadata` e `allowed-tools`. Campo desconhecido ou corpo vazio é erro |
+| Falha | Uma skill malformada derruba a montagem da biblioteca, com o arquivo e o motivo |
+| Índice | `index()` e `render_index()`: só nome e descrição, dentro dos 300 tokens da seção (teste) |
+| Instruções | `load_skill(nome)`; pelo MCP, `list_skills` e `load_skill` |
+| Scripts | `run_script(skill, script)` roda `scripts/<script>` da skill (só `.py`) se `"<skill>/<script>"` estiver em `EMENTA_SKILL_SCRIPTS_ALLOWED`, uma lista JSON vazia por padrão, como `["deadline-calculation/check.py"]`. Roda com o Python do processo, sem shell, na pasta da skill, com um ambiente reduzido (`PATH`, pastas temporárias e idioma; chaves e banco ficam de fora) e com o limite de `EMENTA_SKILL_SCRIPT_TIMEOUT_S` (10 s). O resto é recusado e registrado |
 
 ## API REST
 
