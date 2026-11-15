@@ -33,6 +33,12 @@ class Settings(BaseSettings):
 
     embedding_model: str = "intfloat/multilingual-e5-large"
 
+    # Cross-encoder over the fused candidates (ADR 0010). Off, retrieval is the F1 one: RRF, top 5.
+    rerank_enabled: bool = True
+    rerank_model: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+    rerank_candidates: int = Field(default=30, ge=1)  # fused hits the cross-encoder scores
+    rerank_top_k: int = Field(default=8, ge=1)  # hits kept for the agent context
+
     # Model per role (ADR 0005). Ids checked against the OpenAI /v1/models list on 2026-11-15.
     model_reasoning: str = "gpt-6.1-terra"
     model_default: str = "gpt-6.1-terra"

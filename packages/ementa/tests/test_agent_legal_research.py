@@ -12,7 +12,12 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from pydantic import Field
 
 from ementa.agents.legal_research import LegalResearchAgent, graph
-from ementa.agents.legal_research.graph import NO_BASIS, explicit_ids, render_source
+from ementa.agents.legal_research.graph import (
+    CONTEXT_LIMIT,
+    NO_BASIS,
+    explicit_ids,
+    render_source,
+)
 from ementa.ingest.corpus import load_statute
 from ementa.ingest.index import statute_chunks
 from ementa.knowledge import article_of
@@ -55,7 +60,10 @@ class ScriptedChat(GenericFakeChatModel):
 
 
 def make_agent(
-    retriever: FakeRetriever, answers: list[str], rewrites: str = "consulta"
+    retriever: FakeRetriever,
+    answers: list[str],
+    rewrites: str = "consulta",
+    context_limit: int = CONTEXT_LIMIT,
 ) -> tuple[LegalResearchAgent, dict[ModelRole, ScriptedChat]]:
     chats = {
         ModelRole.FAST: ScriptedChat(messages=iter([AIMessage(rewrites)])),
@@ -66,7 +74,8 @@ def make_agent(
         return chats[spec.role]
 
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    return LegalResearchAgent(retriever, ModelRegistry(settings, factory=factory)), chats
+    registry = ModelRegistry(settings, factory=factory)
+    return LegalResearchAgent(retriever, registry, context_limit=context_limit), chats
 
 
 GOOD = "O consumidor pode desistir em 7 dias da compra fora do estabelecimento [cdc:art49]."
@@ -184,6 +193,21 @@ def test_failed_rewrite_searches_with_the_question_only() -> None:
     research.ask(QUESTION)
 
     assert retriever.queries == [QUESTION]
+
+
+@pytest.mark.parametrize(("context_limit", "sources"), [(CONTEXT_LIMIT, 5), (8, 8)])
+def test_context_limit_sets_how_many_sources_reach_the_model(
+    context_limit: int, sources: int
+) -> None:
+    ids = [f"cdc:art{n}" for n in (49, 35, 18, 20, 32, 26, 12, 27, 42, 43)]
+    research, chats = make_agent(FakeRetriever(ids), [GOOD], context_limit=context_limit)
+
+    answer = research.ask(QUESTION)
+
+    assert answer.sources == ids[:sources]
+    context = chats[ModelRole.DEFAULT].calls[0][1].text
+    assert all(f"[{i}]" in context for i in ids[:sources])
+    assert f"[{ids[sources]}]" not in context
 
 
 @pytest.mark.parametrize(
