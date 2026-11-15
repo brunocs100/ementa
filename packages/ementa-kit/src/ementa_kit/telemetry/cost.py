@@ -3,7 +3,7 @@
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
 
-from ementa_kit.llm.pricing import cost_usd
+from ementa_kit.llm.pricing import usage_from_attributes
 
 
 class CostMeter(SpanProcessor):
@@ -18,19 +18,13 @@ class CostMeter(SpanProcessor):
         return None
 
     def on_end(self, span: ReadableSpan) -> None:
-        attrs = span.attributes or {}
-        if "gen_ai.usage.input_tokens" not in attrs:
+        usage = usage_from_attributes(span.attributes or {})
+        if usage is None:
             return
-        model = str(attrs.get("gen_ai.response.model") or attrs.get("gen_ai.request.model") or "")
-        cost = cost_usd(
-            model,
-            int(attrs.get("gen_ai.usage.input_tokens", 0)),  # type: ignore[arg-type]
-            int(attrs.get("gen_ai.usage.output_tokens", 0)),  # type: ignore[arg-type]
-            int(attrs.get("gen_ai.usage.cache_read.input_tokens", 0)),  # type: ignore[arg-type]
-        )
+        cost = usage.cost_usd
         self.calls += 1
         if cost is None:
-            self.unpriced.add(model)
+            self.unpriced.add(usage.model)
         else:
             self.total_usd += cost
 

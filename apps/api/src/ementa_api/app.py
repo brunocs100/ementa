@@ -58,7 +58,7 @@ def create_app(
     @app.post(
         "/v1/legal-research",
         response_model=AnswerLegalQuestionOutput,
-        responses=problem_responses(422, 500, 503),
+        responses=problem_responses(422, 429, 500, 503),
         summary="Pesquisa jurídica com citações verificadas",
         description=ANSWER_DESCRIPTION,
         tags=["legal-research"],

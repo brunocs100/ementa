@@ -8,7 +8,7 @@ from ementa.agents.legal_research import LegalResearchAgent
 from ementa.agents.legal_research.graph import CONTEXT_LIMIT
 from ementa.knowledge import KnowledgeBase
 from ementa_kit.config import get_settings
-from ementa_kit.llm import ModelRegistry
+from ementa_kit.llm import Budget, ModelRegistry, PgUsageLedger, track_usage
 from ementa_kit.rag import FastEmbedder, FastReranker, PgHybridStore
 from ementa_kit.skills import SkillLibrary
 from ementa_kit.telemetry import instrument_openai
@@ -35,8 +35,17 @@ def knowledge_base() -> KnowledgeBase:
 
 @lru_cache
 def model_registry() -> ModelRegistry:
+    """Models whose every call is priced from its span and refused once a spend cap is reached.
+
+    Needs `ementa_kit.telemetry.setup()` first, as every entry point does.
+    """
     instrument_openai()
-    return ModelRegistry(get_settings())
+    settings = get_settings()
+    ledger = PgUsageLedger(settings.database_url)
+    ledger.ensure_schema()
+    budget = Budget.from_settings(settings, ledger)
+    track_usage(budget)
+    return ModelRegistry(settings, budget=budget)
 
 
 @lru_cache

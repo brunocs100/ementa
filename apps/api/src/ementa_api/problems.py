@@ -4,6 +4,8 @@ Validation errors list where the request is wrong, never the values sent: a ques
 personal data, and error bodies end up in logs.
 """
 
+import math
+from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any
 
@@ -13,7 +15,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ementa_kit.llm import ModelUnavailableError
+from ementa_kit.llm import BudgetExceededError, ModelUnavailableError
 
 PROBLEM_JSON = "application/problem+json"
 
@@ -33,11 +35,12 @@ class Problem(BaseModel):
     errors: list[FieldError] | None = None
 
 
-def problem_response(problem: Problem) -> JSONResponse:
+def problem_response(problem: Problem, headers: dict[str, str] | None = None) -> JSONResponse:
     return JSONResponse(
         problem.model_dump(exclude_none=True),
         status_code=problem.status,
         media_type=PROBLEM_JSON,
+        headers=headers,
     )
 
 
@@ -106,6 +109,22 @@ async def _model_unavailable(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
+async def _budget_exceeded(request: Request, exc: Exception) -> JSONResponse:
+    """429 with the cap that was reached and, in `Retry-After`, the seconds until it resets."""
+    assert isinstance(exc, BudgetExceededError)
+    wait_s = math.ceil((exc.resets_at - datetime.now(UTC)).total_seconds())
+    return problem_response(
+        Problem(
+            type="/problems/budget-exceeded",
+            title="Budget exceeded",
+            status=429,
+            detail=str(exc),
+            instance=request.url.path,
+        ),
+        headers={"Retry-After": str(max(wait_s, 1))},
+    )
+
+
 async def _unexpected(request: Request, exc: Exception) -> JSONResponse:
     return problem_response(Problem(title=_title(500), status=500, instance=request.url.path))
 
@@ -114,4 +133,5 @@ def install_problem_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, _validation)
     app.add_exception_handler(StarletteHTTPException, _http)
     app.add_exception_handler(ModelUnavailableError, _model_unavailable)
+    app.add_exception_handler(BudgetExceededError, _budget_exceeded)
     app.add_exception_handler(Exception, _unexpected)
