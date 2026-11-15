@@ -43,11 +43,7 @@ known-first-party = ["ementa", "ementa_api", "ementa_kit", "ementa_mcp"]
 
 [tool.mypy]
 python_version = "3.12"
-warn_unused_configs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-check_untyped_defs = true
-disallow_untyped_defs = true
+strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "apps"]

@@ -34,7 +34,7 @@ def instrument_openai() -> None:
     """`chat` spans with GenAI attributes (model, tokens) for every OpenAI SDK call."""
     from opentelemetry.instrumentation.openai_v2 import OpenAIInstrumentor
 
-    instrumentor = OpenAIInstrumentor()
+    instrumentor = OpenAIInstrumentor()  # type: ignore[no-untyped-call]  # untyped package
     if not instrumentor.is_instrumented_by_opentelemetry:
         instrumentor.instrument()
 
