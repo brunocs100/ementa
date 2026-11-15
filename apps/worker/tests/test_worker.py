@@ -169,8 +169,7 @@ def test_worker_reads_json_jobs_from_the_ementa_queue_and_keeps_no_result() -> N
 
     assert (options["queue_name"], options["keep_result"]) == (QUEUE_NAME, 0)
     assert (options["job_serializer"], options["job_deserializer"]) == (dump_job, load_job)
-    [function] = options["functions"]
-    assert function.name == "ingest_document"
+    assert [f.name for f in options["functions"]] == ["ingest_document", "run_drafting"]
     assert options["max_tries"] == MAX_TRIES + 1
     redis = options["redis_settings"]
     assert (redis.host, redis.port, redis.database) == ("fila.interna", 6380, 2)

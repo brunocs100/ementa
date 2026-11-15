@@ -220,6 +220,48 @@ sequenceDiagram
     W-->>A: DOCX com a aprovação no cabeçalho
 ```
 
+### Execução com aprovação (F4)
+
+```mermaid
+sequenceDiagram
+    actor A as Advogado
+    participant API as API
+    participant P as Postgres
+    participant R as Redis
+    participant W as ementa-worker
+    A->>API: POST /v1/briefs
+    API->>P: ai.runs com o pedido, ai.jobs
+    API->>R: run_drafting(run_id)
+    API-->>A: 202, execução e tarefa
+    W->>R: pega a tarefa
+    W->>P: grafo até o interrupt, aprovação pendente em ai.approvals
+    A->>API: GET /v1/approvals, depois a aprovação
+    A->>API: POST /v1/approvals/{id}: approve, reject ou edit
+    API->>P: decisão, evento de auditoria, ai.jobs
+    API->>R: run_drafting(run_id, approval_id)
+    API-->>A: 202
+    W->>P: retoma no interrupt da aprovação, resultado em ai.runs, episódio no store
+```
+
+O agente de redação só pede aprovação (`ask_for_approval`, em `ementa_kit.hitl`) e cumpre o protocolo `DraftingAgent` ([Agentes](AGENTES.md#agentes-de-redação-com-aprovação-f4)). O resto fica no kit, em `ementa_kit.hitl.runner`: `DraftingIntake` grava e enfileira, do lado da API; `DraftingRunner` move o grafo, do lado do worker.
+
+| Item | Como funciona |
+|---|---|
+| Execução | Uma linha em `ai.runs`; o id é o da thread do LangGraph. Guarda o pedido como a rota o aceitou, que é de onde o worker começa o grafo, o estado (`queued`, `running`, `awaiting_approval`, `finalized`, `rejected` ou `failed`) e, no fim, o resultado do agente |
+| Aprovação | Uma linha em `ai.approvals` por `interrupt`: o `ApprovalRequest` (agente, tipo, título, rascunho, resumo e classe de dado), quem pediu a execução, a decisão exatamente como retoma o grafo (`decision`), quem decidiu, quando, e o diff do rascunho ao texto final |
+| Pernas | O início e cada retomada são a tarefa `run_drafting` do worker da F3: um grafo chama modelos por minutos e, depois de um `reject`, o agente pode redigir e perguntar de novo. A rota só grava e enfileira, e responde 202 |
+| Retomada | `Command(resume={interrupt_id: decisão})`, endereçada ao interrupt da aprovação: uma retomada repetida nunca responde a pergunta seguinte |
+| Repetição | A tarefa roda pelo menos uma vez, então o runner lê onde a thread parou antes de movê-la. Thread nova começa do pedido; thread parada por uma falha continua do último checkpoint; thread que já passou daquela aprovação só registra onde está |
+| Concorrência | Lock consultivo do Postgres por execução, enquanto o grafo anda: dois workers nunca movem a mesma thread |
+| Decisão única | O `update` só pega aprovação pendente. A mesma decisão da mesma pessoa de novo é uma nova tentativa (a fila estava fora, ou a retomada falhou de vez): não grava nada e põe a retomada na fila outra vez. Outra decisão responde 409 |
+| Nada sem decisão | O grafo não passa do `ask_for_approval` sem retomada, o runner só retoma com decisão gravada e o grafo que termina sem ter perguntado falha a execução |
+| Idempotência | `Idempotency-Key` nos dois POST que iniciam execução: a mesma chave, do mesmo usuário para o mesmo agente, dá a mesma execução (uuid5 dos três); a chave com outro pedido responde 422; execução que tinha falhado volta para a fila |
+| Exemplos | No início, até 3 episódios do agente, os mais próximos de `example_query(pedido)`, entram em `build_input`. No `approve` e no `edit`, o rascunho vira episódio (memória episódica, abaixo). Store fora custa os exemplos, não a execução |
+| Tempo | A perna não tem limite por tentativa: cada chamada de modelo tem o seu, e uma tentativa cortada continuaria rodando na thread ao lado da nova. O limite do arq, de 1 h, é o último recurso |
+| Agentes | `services.drafting_agents()` liga cada agente pelo id; até o agente entrar, a rota dele responde 503 |
+
+O worker tem uma vaga (`max_jobs = 1`), dividida entre a ingestão, que é CPU, e as pernas, que esperam o modelo. Uma perna longa atrasa a ingestão; um segundo processo do worker resolve, e o lock por execução deixa isso seguro.
+
 ### Documento do escritório em fila (F3)
 
 ```mermaid
@@ -323,13 +365,29 @@ erDiagram
     runs {
         uuid id
         text agent
-        uuid user_id
-        text model
-        int input_tokens
-        int output_tokens
-        numeric cost_usd
+        text requested_by
+        jsonb input
+        text status
+        jsonb result
+        text error
+    }
+    approvals {
+        uuid id
+        uuid thread_id
+        text interrupt_id
+        text agent
+        text kind
+        text draft
+        text data_class
+        text status
+        text requested_by
+        text decided_by
+        jsonb decision
+        text diff
     }
 ```
+
+`ai.runs` e `ai.approvals` (F4) são as execuções dos agentes de redação e as pausas delas para aprovação; a execução tem também `created_at`, `updated_at` e `finished_at`, e a aprovação, `title`, `summary`, `created_at` e `decided_at`. Uma aprovação por `interrupt` (`unique (thread_id, interrupt_id)`), e a decisão existe se e só se a aprovação não está pendente (`check`). O custo de cada chamada de modelo fica em `ai.model_usage` e no trace.
 
 Schemas: `firm` (users, clients, cases, case_members, parties, deadlines, movements, documents, time_entries), `knowledge` (sources, chunks), `firm_knowledge` (sources, chunks dos documentos do escritório), `ai` (runs, tool_calls, guardrail_events, approvals, feedback, eval_runs, eval_results, jobs, model_usage), `audit` (events, só inserção, com hash encadeado), `analytics` (views para o BI) e `langgraph` (checkpointer e store).
 
@@ -508,7 +566,7 @@ No `assistant`, a compactação roda no começo do turno, quando a visão do mod
 |---|---|---|---|
 | Curta | Checkpointer do LangGraph no Postgres, por thread | A conversa atual | F3 |
 | Longa | Store do LangGraph com índice vetorial | Preferência de estilo do advogado; ficha do processo; teses aprovadas | F3 |
-| Episódica | Store, namespace por tipo de peça | Rascunho aprovado e a edição do advogado | F4 |
+| Episódica | Store, namespace `("episodes", agente)` | Rascunho aprovado e a edição do advogado | F4 |
 | Procedural | Skills e prompts versionados | Como revisar um contrato de serviços | F2, F4 |
 
 - Namespaces: `("lawyer", id)`, `("case", id)`, `("firm",)`.
@@ -541,6 +599,16 @@ O limiar de 0,97 saiu de 30 pares fictícios medidos com o e5 (14 reescritas ou 
 | 0,98 | 7 de 14 | 0 de 16 |
 
 Juntar por engano apaga um fato verdadeiro; perder uma reescrita só deixa duas memórias parecidas. Por isso o limiar fica no menor valor sem erro. O custo: uma atualização escrita de outro jeito ("quer acordo" e depois "não quer acordo", 0,968) fica como duas memórias.
+
+A memória episódica da F4, em `ementa_kit.memory.episodes` (`services.episodes()`), no mesmo store:
+
+| Item | Como funciona |
+|---|---|
+| Item | Um por aprovação, com o id dela como chave: título, rascunho, texto final, o diff unificado entre os dois (uma linha de contexto), a ação (`approve` ou `edit`), o comentário, quem decidiu, `subjects` e `text`, que é o título com o texto final, o campo do índice |
+| Escrita | `Episodes.record`, na retomada de um `approve` ou `edit`; um `reject` não vira exemplo. Gravar a mesma aprovação de novo troca o episódio, então uma tarefa repetida não duplica. Falha fica no log e a execução termina como terminaria |
+| Pseudonimização | Título, rascunho, texto final e comentário passam pelo guardrail de PII antes de gravar, com um mapeamento só: o mesmo nome tem o mesmo marcador nos quatro, e o diff mostra só o que o advogado mudou. O episódio de um processo vira exemplo no processo de outro cliente, onde aqueles nomes não têm lugar, e o modelo tende a copiar do exemplo; o que o exemplo ensina é a forma do texto, que os marcadores mantêm. A aprovação em `ai.approvals` guarda o texto em claro |
+| Titulares | Os ids dos valores trocados etiquetam o episódio como qualquer memória: o esquecimento (`DELETE /v1/data-subjects/{id}/memories`) também o apaga |
+| Leitura | `Episodes.examples_for(agente, consulta, k)`: até `k` episódios do agente (3 por padrão), o mais próximo da consulta primeiro, pelo e5 local. O runner chama com o `example_query` do pedido e passa os episódios ao `build_input` do agente |
 
 ## Padrões multiagente
 
@@ -611,9 +679,11 @@ O loader de runtime (`ementa_kit.skills`, F2):
 | `GET /v1/threads/{id}` | Histórico de uma conversa | F3 |
 | `POST /v1/documents` | Upload e ingestão em fila | F3 |
 | `GET /v1/jobs/{id}` | Estado de uma tarefa longa | F3 |
-| `POST /v1/contracts/{id}/review` | Inicia a análise de contrato | F4 |
-| `POST /v1/briefs` | Inicia a redação de peça | F4 |
-| `POST /v1/approvals/{id}` | Aprova, rejeita ou edita um passo pendente | F4 |
+| `POST /v1/contracts/{id}/review` | Inicia a análise de um contrato enviado em `POST /v1/documents`; 202 | F4 |
+| `POST /v1/briefs` | Inicia a redação de peça; 202 | F4 |
+| `GET /v1/approvals` | Caixa de aprovações, pendentes por padrão, paginada por cursor | F4 |
+| `GET /v1/approvals/{id}` | Uma aprovação: rascunho, decisão, diff e o estado da execução | F4 |
+| `POST /v1/approvals/{id}` | Aprova, rejeita ou edita um passo pendente; 202 | F4 |
 | `GET /v1/deadlines` | Prazos a vencer | F5 |
 | `POST /v1/intake` | Triagem e conflito | F5 |
 | `POST /v1/analytics/query` | Pergunta de gestão em SQL guardado | F6 |
@@ -623,6 +693,8 @@ O loader de runtime (`ementa_kit.skills`, F2):
 Convenções: JWT de curta duração com papel; erros no formato RFC 9457 (`application/problem+json`); `Idempotency-Key` nos POST que iniciam tarefa (em `POST /v1/documents` a chave é o próprio conteúdo: sha256 por usuário); paginação por cursor; limite de taxa por usuário no Redis; OpenAPI com exemplos.
 
 Problemas próprios da F3: `/problems/budget-exceeded` (429, com o limite atingido no `detail` e `Retry-After` até a virada), `/problems/document-too-large` (413), `/problems/unsupported-media-type` (415), `/problems/invalid-document` (422) e `/problems/queue-unavailable` (503; reenviar o arquivo não duplica nada). A tarefa de outro usuário responde 404, como se não existisse.
+
+Problemas próprios da F4: `/problems/agent-unavailable` (503, o agente ainda não está ligado), `/problems/idempotency-key-reused` (422, a chave já iniciou outro pedido), `/problems/approval-decided` (409, a aprovação já tem outra decisão) e `/problems/queue-unavailable` (503) também nas rotas de redação: a execução ou a decisão já está gravada, e repetir o pedido com a mesma `Idempotency-Key`, ou a mesma decisão, a põe na fila. Aprovação de execução alheia, para o associado, e contrato de outra pessoa respondem 404, como os que não existem. Decisão fora do formato (`edit` sem `text`, `text` com `approve` ou `reject`) é 422.
 
 ### Chat em SSE (F3)
 
@@ -656,6 +728,8 @@ A conversa fica no checkpointer do LangGraph no Postgres, no schema `langgraph` 
 | Citação não verificada | Remove e avisa; em peça, bloqueia a finalização |
 | Worker reiniciado | Retoma do checkpoint; o arq roda de novo a tarefa interrompida, que é idempotente |
 | Redis fora | `POST /v1/documents` responde 503; o documento e a tarefa já estão no Postgres e reenviar o arquivo enfileira de novo |
+| Redis fora numa execução de redação | A rota responde 503 com a execução ou a decisão já gravadas; a mesma `Idempotency-Key`, ou a mesma decisão, enfileira de novo sem duplicar |
+| Worker cai no meio de um grafo | O arq roda a perna de novo; o runner continua do último checkpoint, e o lock por execução impede duas execuções na mesma thread |
 | DataJud indisponível | Nova tentativa na próxima rodada; alerta depois de 24 h |
 
 ## Glossário

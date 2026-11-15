@@ -53,6 +53,50 @@ spec = AgentSpec(
 graph = AgentFactory(settings).build(spec, build_graph=legal_research_graph)
 ```
 
+## Agentes de redação com aprovação (F4)
+
+O `contract_review` e o `brief_drafting` não rodam na rota que os pede. Cada execução é uma thread própria do LangGraph, movida pelo worker, que para onde o agente pede aprovação e retoma com a decisão do advogado (o fluxo está em [Arquitetura](ARQUITETURA.md#execução-com-aprovação-f4)). Do agente, o runner (`ementa_kit.hitl.runner.DraftingRunner`) espera duas coisas: que chame `ask_for_approval` (`ementa_kit.hitl`) antes de finalizar e que cumpra o protocolo `DraftingAgent`.
+
+| Membro | O que é |
+|---|---|
+| `id` | O id fixo do agente, o mesmo do campo `agent` do `ApprovalRequest` que ele manda |
+| `graph` | O grafo compilado com o checkpointer do Postgres (`services.checkpointer()`) |
+| `example_query(request)` | O texto que busca os exemplos: os fatos da peça, o contrato |
+| `build_input(request, examples)` | A entrada do grafo. `request` é o JSON que a rota aceitou; `examples`, até 3 episódios do agente, o mais próximo primeiro, com marcadores no lugar dos dados pessoais |
+| `result(values)` | O que a execução devolve, em JSON, a partir do estado final; o estado inteiro fica no checkpointer |
+
+```python
+class BriefDraftingAgent:  # esboço: o agente de verdade define o grafo e o estado
+    id = "brief_drafting"
+
+    def __init__(self, models: ModelRegistry, checkpointer: BaseCheckpointSaver[Any]) -> None:
+        self.graph = build_graph(models).compile(checkpointer=checkpointer)
+
+    def example_query(self, request: Mapping[str, Any]) -> str:
+        return str(request["facts"])
+
+    def build_input(
+        self, request: Mapping[str, Any], examples: Sequence[Episode]
+    ) -> dict[str, Any]:
+        shots = [{"draft": e.draft, "final": e.final, "diff": e.diff} for e in examples]
+        return {"facts": request["facts"], "case_id": request.get("case_id"), "examples": shots}
+
+    def result(self, values: Mapping[str, Any]) -> dict[str, Any]:
+        return {"text": values["final"]}
+```
+
+O agente entra com uma linha em `services.drafting_agents()`; sem ela, a rota dele responde 503 (`/problems/agent-unavailable`). O pedido chega como a rota o aceitou: `POST /v1/briefs` manda `facts`, `kind` (`peticao_inicial` por padrão) e `case_id`, opcional; `POST /v1/contracts/{id}/review` manda `document_id`, um documento de `firm.documents` que o próprio agente lê.
+
+O que o runner faz valer:
+
+- O nó que chama `ask_for_approval` roda de novo desde o começo quando a execução retoma, como todo nó com `interrupt()`: o que vem antes da chamada não pode ter efeito fora do estado.
+- O `ApprovalRequest` nomeia o próprio agente. Outro id, um `interrupt()` que não traga um `ApprovalRequest` ou um breakpoint estático falham a execução.
+- `edit` chega com o texto do advogado em `text`; `approve` e `reject`, sem texto. O agente finaliza o que o advogado deixou passar: o rascunho no `approve`, o texto no `edit`.
+- `reject` devolve o controle ao agente: ele termina, e a execução fica `rejected`, ou redige de novo e pergunta outra vez, o que abre uma aprovação nova.
+- Grafo que termina sem ter perguntado falha a execução: nada sai finalizado sem decisão.
+- `result` devolve JSON. O resultado fica em `ai.runs` e aparece no `run` de `GET /v1/approvals/{id}`.
+- O estado guarda só valores simples: os `examples` como `dict`, a decisão como `decision.model_dump()`. O checkpointer do LangGraph 1.2 já avisa ao ler um tipo que não conhece, como `Episode` ou `ApprovalDecision`, e diz que vai recusá-lo numa versão próxima.
+
 ## Pesquisa jurídica (`legal_research`)
 
 **Objetivo.** Responder a perguntas de direito com base no corpus público, citando só fontes que existem e que estavam no contexto da resposta.

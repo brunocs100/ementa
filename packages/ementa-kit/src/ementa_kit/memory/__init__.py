@@ -10,10 +10,14 @@ writer.write(turn, targets=[Namespace("lawyer", user_id)], mapping=conversation_
 memories = search_memories(store, [Namespace("lawyer", user_id)], question)
 forget_subject(store, subject_id(key, "CPF", "123.456.789-09"))  # how many were deleted
 ```
+
+Episodic memory (F4) keeps the drafts lawyers approved or edited, pseudonymized, as few-shot
+examples: `Episodes(store, guard, subject_key=key).examples_for(agent, query, k)`.
 """
 
 from ementa_kit.memory.checkpoint import CHECKPOINT_SCHEMA, postgres_checkpointer
 from ementa_kit.memory.embeddings import LocalEmbeddings
+from ementa_kit.memory.episodes import EPISODES, Episode, Episodes, edit_diff, episodes_of
 from ementa_kit.memory.store import (
     SCHEMA,
     SUBJECT_ID_PATTERN,
@@ -29,15 +33,20 @@ from ementa_kit.memory.writer import MAX_MEMORIES, Candidate, MemoryWriter, Writ
 
 __all__ = [
     "CHECKPOINT_SCHEMA",
+    "EPISODES",
     "MAX_MEMORIES",
     "SCHEMA",
     "SUBJECT_ID_PATTERN",
     "Candidate",
+    "Episode",
+    "Episodes",
     "LocalEmbeddings",
     "Memory",
     "MemoryWriter",
     "Namespace",
     "Written",
+    "edit_diff",
+    "episodes_of",
     "forget_subject",
     "memory_value",
     "open_postgres_store",
