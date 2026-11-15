@@ -24,6 +24,7 @@ class Source:
     encoding: str
     retrieved_at: str
     sha256: str
+    license: str = ""
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,7 @@ def load_statute(source_id: str, corpus_dir: Path = DEFAULT_CORPUS_DIR) -> Statu
     """Parse a snapshot after checking its hash against `source.json`."""
     folder = corpus_dir / "raw" / source_id
     meta = json.loads((folder / "source.json").read_text(encoding="utf-8"))
-    source = Source(**{k: meta[k] for k in Source.__dataclass_fields__})
+    source = Source(**{k: meta[k] for k in Source.__dataclass_fields__ if k in meta})
     raw = (folder / source.file).read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
     if digest != source.sha256:
