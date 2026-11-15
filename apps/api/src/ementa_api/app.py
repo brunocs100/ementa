@@ -15,6 +15,8 @@ from ementa.tools.research import (
     AnswerLegalQuestionInput,
     AnswerLegalQuestionOutput,
 )
+from ementa_api.auth import Role
+from ementa_api.chat import Assistant, add_chat_routes, any_tool
 from ementa_api.problems import (
     Problem,
     install_problem_handlers,
@@ -47,13 +49,17 @@ def corpus_chunks() -> int:
 def create_app(
     researcher: Callable[[], Researcher] = services.private_legal_research,
     chunks: Callable[[], int] = corpus_chunks,
+    assistant: Callable[[], Assistant] = services.assistant_agent,
+    can_use_tool: Callable[[Role, str], bool] = any_tool,
 ) -> FastAPI:
+    """`can_use_tool(role, tool)` decides which of the assistant's tools a role gets."""
     app = FastAPI(
         title="Ementa API",
         version="0.1.0",
         description="Agentes de IA para advocacia. Saídas são rascunho para o advogado conferir.",
     )
     install_problem_handlers(app)
+    add_chat_routes(app, assistant, can_use_tool)
 
     @app.post(
         "/v1/legal-research",

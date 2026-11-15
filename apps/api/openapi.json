@@ -6,6 +6,194 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/v1/chat": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Conversa com o assistente, em SSE",
+        "description": "Conversa com o assistente da Ementa, que encaminha o pedido ao `legal_research` ou ao `calculate_deadline`. A resposta é um fluxo SSE (`text/event-stream`): cada evento traz um JSON em `data`, com o tipo no campo `event`. `step`: um passo começou ou terminou (o modelo, `supervisor`, ou uma ferramenta). `token`: um pedaço da resposta, palavra inteira, com os dados pessoais de volta. `citation`: uma fonte verificada pelo `legal_research`. `done`: o último evento, com o `thread_id` e a resposta final depois da conferência das citações, que prevalece sobre os tokens. `error`: um problema RFC 9457, quando o erro acontece com o fluxo já aberto. Sem `thread_id` começa uma conversa nova; com ele, continua uma conversa sua.",
+        "operationId": "chat_v1_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/event-stream": {
+                "itemSchema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "string",
+                      "contentMediaType": "application/json",
+                      "contentSchema": {
+                        "oneOf": [
+                          {
+                            "$ref": "#/components/schemas/StepEvent"
+                          },
+                          {
+                            "$ref": "#/components/schemas/TokenEvent"
+                          },
+                          {
+                            "$ref": "#/components/schemas/CitationEvent"
+                          },
+                          {
+                            "$ref": "#/components/schemas/DoneEvent"
+                          },
+                          {
+                            "$ref": "#/components/schemas/ErrorEvent"
+                          }
+                        ],
+                        "discriminator": {
+                          "propertyName": "event",
+                          "mapping": {
+                            "step": "#/components/schemas/StepEvent",
+                            "token": "#/components/schemas/TokenEvent",
+                            "citation": "#/components/schemas/CitationEvent",
+                            "done": "#/components/schemas/DoneEvent",
+                            "error": "#/components/schemas/ErrorEvent"
+                          }
+                        },
+                        "title": "Streamitem Chat V1 Chat Post"
+                      }
+                    },
+                    "event": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "retry": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/{thread_id}": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Histórico de uma conversa",
+        "description": "As mensagens de uma conversa sua, com os dados pessoais como foram digitados na primeira vez. Conversa de outra pessoa responde 404, como uma que não existe.",
+        "operationId": "thread_v1_threads__thread_id__get",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Thread Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadHistory"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
     "/v1/legal-research": {
       "post": {
         "tags": [
@@ -204,6 +392,66 @@
         ],
         "title": "AnswerLegalQuestionOutput"
       },
+      "ChatRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Message",
+            "description": "Mensagem do usuário"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id",
+            "description": "Conversa a continuar; sem ele, começa uma nova"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ChatRequest"
+      },
+      "CitationEvent": {
+        "properties": {
+          "event": {
+            "type": "string",
+            "const": "citation",
+            "title": "Event",
+            "default": "citation"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_id",
+          "title",
+          "url"
+        ],
+        "title": "CitationEvent",
+        "description": "A source that `legal_research` verified, sent as soon as the tool returns."
+      },
       "CitationOut": {
         "properties": {
           "source_id": {
@@ -236,6 +484,111 @@
         ],
         "title": "DataClass",
         "description": "What a tool returns. It decides what may leave to a cloud model or an external MCP client."
+      },
+      "DoneEvent": {
+        "properties": {
+          "event": {
+            "type": "string",
+            "const": "done",
+            "title": "Event",
+            "default": "done"
+          },
+          "thread_id": {
+            "type": "string",
+            "title": "Thread Id",
+            "description": "Id da conversa, para continuar com o próximo POST"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "removed": {
+            "items": {
+              "$ref": "#/components/schemas/RemovedOut"
+            },
+            "type": "array",
+            "title": "Removed"
+          },
+          "notice": {
+            "type": "string",
+            "title": "Notice",
+            "default": "Rascunho para conferência do advogado responsável. Não é aconselhamento jurídico."
+          }
+        },
+        "type": "object",
+        "required": [
+          "thread_id",
+          "message",
+          "removed"
+        ],
+        "title": "DoneEvent",
+        "description": "The last event. `message` is the reply after the citation check and prevails over the\njoined tokens: a sentence citing a source no tool verified is removed and listed in\n`removed`."
+      },
+      "ErrorEvent": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "about:blank"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "instance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FieldError"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          },
+          "event": {
+            "type": "string",
+            "const": "error",
+            "title": "Event",
+            "default": "error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "status"
+        ],
+        "title": "ErrorEvent",
+        "description": "An error after the stream started, when no status can be sent: the RFC 9457 problem the\nhandlers would have answered with, as the last event."
       },
       "FieldError": {
         "properties": {
@@ -282,6 +635,35 @@
           "status"
         ],
         "title": "Health"
+      },
+      "HistoryMessage": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationOut"
+            },
+            "type": "array",
+            "title": "Citations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "HistoryMessage"
       },
       "Problem": {
         "properties": {
@@ -377,6 +759,81 @@
           "reason"
         ],
         "title": "RemovedOut"
+      },
+      "StepEvent": {
+        "properties": {
+          "event": {
+            "type": "string",
+            "const": "step",
+            "title": "Event",
+            "default": "step"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "supervisor, legal_research ou calculate_deadline"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "started",
+              "finished",
+              "denied",
+              "failed"
+            ],
+            "title": "Status",
+            "description": "denied: ferramenta fora das permitidas ao papel; failed: erro na ferramenta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "status"
+        ],
+        "title": "StepEvent",
+        "description": "A step of the turn: the model at work (`supervisor`) or a tool running."
+      },
+      "ThreadHistory": {
+        "properties": {
+          "thread_id": {
+            "type": "string",
+            "title": "Thread Id"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryMessage"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "thread_id",
+          "messages"
+        ],
+        "title": "ThreadHistory",
+        "description": "The finished turns of a thread, as the user saw them."
+      },
+      "TokenEvent": {
+        "properties": {
+          "event": {
+            "type": "string",
+            "const": "token",
+            "title": "Event",
+            "default": "token"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "TokenEvent",
+        "description": "A piece of the reply, whole words with the values in place of the markers."
       }
     }
   }
