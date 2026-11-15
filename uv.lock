@@ -313,12 +313,14 @@ source = { editable = "packages/ementa" }
 dependencies = [
     { name = "ementa-kit" },
     { name = "langgraph" },
+    { name = "presidio-analyzer" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "ementa-kit", editable = "packages/ementa-kit" },
     { name = "langgraph", specifier = ">=1.2" },
+    { name = "presidio-analyzer", specifier = ">=2.2.366" },
 ]
 
 [[package]]
