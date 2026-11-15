@@ -6,11 +6,15 @@ The API and the MCP server use `pii_guard()`; the kit's guard alone knows none o
 """
 
 import re
+from collections.abc import Callable
+from dataclasses import replace
 from functools import cache
+from typing import Protocol
 
 from presidio_analyzer import Pattern, PatternRecognizer
 
-from ementa_kit.guardrails.pii import LANGUAGE, PiiGuard, build_pii_guard
+from ementa.agents.legal_research import ResearchAnswer
+from ementa_kit.guardrails.pii import LANGUAGE, PiiGuard, build_pii_guard, rehydrate
 
 OAB = "OAB"
 
@@ -91,3 +95,29 @@ def pii_guard() -> PiiGuard:
     Built once per process; the first call loads the spaCy model (a few seconds).
     """
     return build_pii_guard(extra_recognizers=[oab_recognizer()], allow=LEGAL_ALLOW)
+
+
+class Researcher(Protocol):
+    def ask(self, question: str) -> ResearchAnswer: ...
+
+
+class PrivateResearcher:
+    """The research agent behind the PII guard: the question is pseudonymized before any model
+    sees it (`[CPF_1]` instead of the number) and the answer is rehydrated for the caller, who
+    typed the values in the first place."""
+
+    def __init__(self, agent: Researcher, guard: Callable[[], PiiGuard] = pii_guard) -> None:
+        self._agent = agent
+        self._guard = guard
+
+    def ask(self, question: str) -> ResearchAnswer:
+        masked = self._guard().pseudonymize(question, stage="input")
+        answer = self._agent.ask(masked.text)
+        if not masked.mapping:
+            return answer
+        return replace(
+            answer,
+            question=question,
+            answer=rehydrate(answer.answer, masked.mapping),
+            queries=[rehydrate(q, masked.mapping) for q in answer.queries],
+        )

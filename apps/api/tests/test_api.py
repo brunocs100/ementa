@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -127,3 +128,27 @@ def test_openapi_contract_is_up_to_date() -> None:
     `uv run ementa-api --openapi > apps/api/openapi.json` and review the diff."""
     current = client().app.openapi()  # type: ignore[attr-defined]
     assert json.loads(OPENAPI.read_text(encoding="utf-8")) == current
+
+
+class EchoResearcher(FakeResearcher):
+    """Answers with whatever markers it received, as a cloud model would."""
+
+    def ask(self, question: str) -> ResearchAnswer:
+        answer = super().ask(question)
+        markers = " ".join(w.strip(".,?") for w in question.split() if w.startswith("["))
+        return replace(answer, answer=f"Recebi o pedido de {markers}.")
+
+
+def test_cpf_reaches_the_model_as_a_marker_and_comes_back_rehydrated() -> None:
+    from ementa.pii import PrivateResearcher
+
+    model = EchoResearcher()
+    app = create_app(researcher=lambda: PrivateResearcher(model), chunks=lambda: 1)
+    question = "Meu CPF é 123.456.789-09 e fui negativado sem aviso. Posso pedir indenização?"
+
+    response = TestClient(app).post("/v1/legal-research", json={"question": question})
+
+    assert response.status_code == 200
+    assert "[CPF_1]" in model.questions[0]
+    assert "123.456.789-09" not in model.questions[0]
+    assert response.json()["answer"] == "Recebi o pedido de 123.456.789-09."

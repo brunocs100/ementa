@@ -32,7 +32,7 @@ def test_public_output_goes_out_unchanged() -> None:
 
 
 def test_restricted_output_is_pseudonymized_in_every_text_field() -> None:
-    out = OutputPolicy(fake_protect).apply("t", DataClass.RESTRICTED, CARD, "vscode")
+    out = OutputPolicy(lambda: fake_protect).apply("t", DataClass.RESTRICTED, CARD, "vscode")
 
     assert out == Card(client="[PESSOA_1], CPF [CPF_1]", notes=["ligar para [PESSOA_1]"], hours=3)
     assert CARD.client.startswith("Maria")  # the original is not mutated
@@ -46,7 +46,7 @@ def test_restricted_without_a_pseudonymizer_fails_closed() -> None:
 
 def test_secret_output_is_denied_even_with_a_pseudonymizer() -> None:
     with pytest.raises(ToolDeniedError, match=r"sigiloso|secret"):
-        OutputPolicy(fake_protect).apply("lookup_case", DataClass.SECRET, CARD, "vscode")
+        OutputPolicy(lambda: fake_protect).apply("lookup_case", DataClass.SECRET, CARD, "vscode")
 
 
 def test_decision_and_client_are_recorded_on_the_span_without_content() -> None:
@@ -54,7 +54,7 @@ def test_decision_and_client_are_recorded_on_the_span_without_content() -> None:
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     with provider.get_tracer("t").start_as_current_span("execute_tool t"):
-        OutputPolicy(fake_protect).apply("t", DataClass.RESTRICTED, CARD, "copilot/1.0")
+        OutputPolicy(lambda: fake_protect).apply("t", DataClass.RESTRICTED, CARD, "copilot/1.0")
 
     (span,) = exporter.get_finished_spans()
     assert span.attributes is not None
@@ -85,7 +85,7 @@ def _call_deadline(server: Any) -> Any:
 def test_a_tool_marked_secret_is_denied_to_the_mcp_client(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(deadlines, "DATA_CLASS", DataClass.SECRET)
 
-    result = _call_deadline(build_server(policy=OutputPolicy(fake_protect)))
+    result = _call_deadline(build_server(policy=OutputPolicy(lambda: fake_protect)))
 
     assert result.is_error
     assert "não responde a cliente MCP externo" in result.content[0].text
@@ -97,7 +97,7 @@ def test_a_restricted_tool_goes_out_pseudonymized(monkeypatch: pytest.MonkeyPatc
     def protect(text: str) -> str:
         return text.replace("CPC", "[LEI_1]")
 
-    result = _call_deadline(build_server(policy=OutputPolicy(protect)))
+    result = _call_deadline(build_server(policy=OutputPolicy(lambda: protect)))
 
     assert not result.is_error
     premises = " ".join(result.structured_content["premises"])

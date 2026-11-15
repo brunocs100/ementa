@@ -13,7 +13,7 @@ Every decision is recorded on the tool span and in the log, with the client name
 
 from collections.abc import Callable
 from enum import StrEnum
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from opentelemetry import trace
 from pydantic import BaseModel
@@ -21,10 +21,16 @@ from pydantic import BaseModel
 from ementa_kit.policy import DataClass
 from ementa_kit.telemetry import get_logger
 
+if TYPE_CHECKING:
+    from ementa_kit.guardrails.pii import PiiGuard
+
 T = TypeVar("T", bound=BaseModel)
 
 Protector = Callable[[str], str]
 """Pseudonymizes one text, e.g. "CPF 123.456.789-09" -> "CPF [CPF_1]"."""
+
+NewProtector = Callable[[], Protector]
+"""A fresh protector per output, so every field of one output shares one marker mapping."""
 
 UNKNOWN_CLIENT = "unknown"
 
@@ -57,14 +63,26 @@ def _protect_value(value: Any, protect: Protector) -> Any:
     return value
 
 
+def pii_protector(guard: "PiiGuard") -> Protector:
+    """Protector over the PII guard; the markers stay consistent across the fields it sees."""
+    mapping: dict[str, str] = {}
+
+    def protect(text: str) -> str:
+        result = guard.pseudonymize(text, mapping, stage="output")
+        mapping.update(result.mapping)
+        return result.text
+
+    return protect
+
+
 class OutputPolicy:
-    def __init__(self, protect: Protector | None = None) -> None:
-        self._protect = protect
+    def __init__(self, new_protector: NewProtector | None = None) -> None:
+        self._new_protector = new_protector
 
     def decide(self, data_class: DataClass) -> Decision:
         if data_class is DataClass.PUBLIC:
             return Decision.ALLOWED
-        if data_class is DataClass.RESTRICTED and self._protect is not None:
+        if data_class is DataClass.RESTRICTED and self._new_protector is not None:
             return Decision.PSEUDONYMIZED
         return Decision.DENIED
 
@@ -87,7 +105,7 @@ class OutputPolicy:
                 "MCP externo. Use o console da Ementa."
             )
         if decision is Decision.PSEUDONYMIZED:
-            assert self._protect is not None
-            data = _protect_value(output.model_dump(mode="json"), self._protect)
+            assert self._new_protector is not None
+            data = _protect_value(output.model_dump(mode="json"), self._new_protector())
             return type(output).model_validate(data)
         return output

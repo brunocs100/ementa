@@ -25,10 +25,12 @@ def main() -> None:
     import uvicorn
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
+    from ementa.pii import pii_guard
     from ementa_kit.config import get_settings
     from ementa_kit.telemetry import setup
 
     setup(get_settings())
+    pii_guard()  # loads the spaCy model now, not on the first request
     FastAPIInstrumentor.instrument_app(app, excluded_urls="healthz,readyz")
     uvicorn.run(app, host=args.host, port=args.port)
 

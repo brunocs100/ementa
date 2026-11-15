@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ementa.agents.legal_research import LegalResearchAgent
 from ementa.knowledge import KnowledgeBase
@@ -10,6 +11,9 @@ from ementa_kit.llm import ModelRegistry
 from ementa_kit.rag import FastEmbedder, PgHybridStore
 from ementa_kit.skills import SkillLibrary
 from ementa_kit.telemetry import instrument_openai
+
+if TYPE_CHECKING:
+    from ementa.pii import PrivateResearcher
 
 SKILLS_DIR = Path(__file__).resolve().parents[4] / "skills"
 
@@ -41,3 +45,14 @@ def skill_library() -> SkillLibrary:
         allowed_scripts=settings.skill_scripts_allowed,
         script_timeout_s=settings.skill_script_timeout_s,
     )
+
+
+@lru_cache
+def private_legal_research() -> "PrivateResearcher":
+    """What the API and the MCP server call: no personal data reaches the cloud model.
+
+    Imported here because Presidio and spaCy take seconds to import.
+    """
+    from ementa.pii import PrivateResearcher
+
+    return PrivateResearcher(legal_research_agent())

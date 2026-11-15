@@ -20,7 +20,13 @@ from ementa_kit.policy import DataClass
 from ementa_kit.rag import Hit
 from ementa_kit.skills import MAX_NAME, NAME_PATTERN, SkillLibrary, UnknownSkillError
 from ementa_kit.telemetry import get_logger, get_tracer, setup
-from ementa_mcp.policy import OutputPolicy, ToolDeniedError, client_label
+from ementa_mcp.policy import (
+    OutputPolicy,
+    Protector,
+    ToolDeniedError,
+    client_label,
+    pii_protector,
+)
 
 INSTRUCTIONS = (
     "Ementa: AI agents for a law firm. Answers are drafts for a lawyer to review, "
@@ -61,9 +67,15 @@ def _client(ctx: Ctx) -> str:
     return client_label(info.name, info.version) if info else client_label(None)
 
 
+def _pii_protector() -> Protector:
+    from ementa.pii import pii_guard  # Presidio and spaCy load only for restricted outputs
+
+    return pii_protector(pii_guard())
+
+
 def build_server(
     knowledge: Callable[[], Searcher] = services.knowledge_base,
-    agent: Callable[[], Answerer] = services.legal_research_agent,
+    agent: Callable[[], Answerer] = services.private_legal_research,
     skill_library: Callable[[], SkillLibrary] = services.skill_library,
     policy: OutputPolicy | None = None,
 ) -> MCPServer:
@@ -72,7 +84,7 @@ def build_server(
     Every tool output passes the output policy before it reaches the client.
     """
     server = MCPServer(name="ementa", instructions=INSTRUCTIONS)
-    guard = policy or OutputPolicy()
+    guard = policy or OutputPolicy(_pii_protector)
 
     def release(tool: str, data_class: DataClass, output: Out, ctx: Ctx) -> Out:
         try:

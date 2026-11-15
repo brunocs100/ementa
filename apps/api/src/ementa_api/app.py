@@ -45,7 +45,7 @@ def corpus_chunks() -> int:
 
 
 def create_app(
-    researcher: Callable[[], Researcher] = services.legal_research_agent,
+    researcher: Callable[[], Researcher] = services.private_legal_research,
     chunks: Callable[[], int] = corpus_chunks,
 ) -> FastAPI:
     app = FastAPI(
