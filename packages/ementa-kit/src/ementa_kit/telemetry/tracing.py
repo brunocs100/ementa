@@ -30,5 +30,14 @@ def setup(settings: Settings, exporter: SpanExporter | None = None) -> TracerPro
     return provider
 
 
+def instrument_openai() -> None:
+    """`chat` spans with GenAI attributes (model, tokens) for every OpenAI SDK call."""
+    from opentelemetry.instrumentation.openai_v2 import OpenAIInstrumentor
+
+    instrumentor = OpenAIInstrumentor()
+    if not instrumentor.is_instrumented_by_opentelemetry:
+        instrumentor.instrument()
+
+
 def get_tracer(name: str) -> trace.Tracer:
     return trace.get_tracer(name)
