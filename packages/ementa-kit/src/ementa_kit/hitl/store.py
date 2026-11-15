@@ -167,6 +167,9 @@ class MemoryDraftingStore:
     def __init__(self) -> None:
         self.runs: dict[str, Run] = {}
         self.approvals_by_id: dict[str, Approval] = {}  # in the order they were opened
+        # Approval ids in the order they were decided. Two decisions can share a clock tick on
+        # Windows, so the times cannot tell which came last.
+        self._decided: list[str] = []
         self._lock = threading.Lock()
         self._run_locks: dict[str, threading.Lock] = {}
 
@@ -285,18 +288,18 @@ class MemoryDraftingStore:
                 decided_at=now,
             )
             self.approvals_by_id[approval_id] = decided
+            self._decided.append(approval_id)
             run = self.runs[approval.thread_id]
             self.runs[run.id] = replace(run, status=RunStatus.QUEUED, updated_at=now)
             return decided
 
     def last_decided(self, thread_id: str) -> Approval | None:
         with self._lock:
-            decided = [
-                a
-                for a in self.approvals_by_id.values()
-                if a.thread_id == thread_id and a.decided_at is not None
-            ]
-        return max(decided, key=lambda a: a.decided_at or a.created_at, default=None)
+            for approval_id in reversed(self._decided):
+                approval = self.approvals_by_id[approval_id]
+                if approval.thread_id == thread_id:
+                    return approval
+        return None
 
 
 _SCHEMA = """
@@ -568,7 +571,7 @@ class PgDraftingStore:
                 self._sql(
                     f"select {_APPROVAL_COLUMNS} from {{schema}}.approvals "
                     "where thread_id = %s and decided_at is not null "
-                    "order by decided_at desc limit 1"
+                    "order by decided_at desc, created_at desc limit 1"
                 ),
                 (thread_id,),
             ).fetchone()
