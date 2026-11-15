@@ -8,6 +8,8 @@ dependencies = [
     "fastembed>=0.9",
     "langchain-core>=1.8",
     "langchain-openai>=1.8",
+    # Short-term memory: LangGraph checkpoints in Postgres (3.2 needs langgraph-checkpoint 4.3)
+    "langgraph-checkpoint-postgres>=3.2",
     "opentelemetry-exporter-otlp-proto-http>=1.38",
     "opentelemetry-instrumentation-openai-v2>=2.4b0",
     # openai-v2 2.4b0 imports a module that util-genai 1.x renamed
@@ -17,6 +19,7 @@ dependencies = [
     # Portuguese NER for the PII guardrail; a direct wheel from the spaCy release, pinned in uv.lock
     "pt-core-news-md",
     "psycopg[binary]>=3.3",
+    "psycopg-pool>=3.2",
     "pydantic-settings>=2.11",
     "pyyaml>=6.0",
     # pt_core_news_md 3.8.0 only loads on spaCy 3.8
