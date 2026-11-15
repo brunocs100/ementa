@@ -53,7 +53,7 @@ Atributos próprios do projeto:
 | `ementa.memory.candidates`, `ementa.memory.inserted`, `ementa.memory.updated` | int | Candidatas do modelo, memórias novas e memórias substituídas num turno |
 | `ementa.memory.removed` | int | Memórias apagadas num esquecimento; o span não leva mais nada |
 | `ementa.memory.hits` | int | Memórias que a busca trouxe |
-| `ementa.context.compacted` | evento no span corrente, com `messages.before`, `tokens.before`, `tokens.after` e o prompt do resumo | `{"messages.before": 41, "tokens.before": 9120, "tokens.after": 520, ...}` |
+| `ementa.context.compacted` | evento no span corrente (no `assistant`, o `invoke_agent` do turno que compacta), com `messages.before`, `tokens.before`, `tokens.after` e o prompt do resumo | `{"messages.before": 41, "tokens.before": 9120, "tokens.after": 520, ...}` |
 | `ementa.area` | string | `consumidor`: área de atuação dos spans GenAI abertos dentro de `practice_area()` |
 | `ementa.job.outcome` | string | `succeeded`, `retry` ou `failed`, por tentativa |
 

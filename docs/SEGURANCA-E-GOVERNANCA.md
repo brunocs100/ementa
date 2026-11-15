@@ -349,7 +349,9 @@ Retenção: na F1 as chamadas usam Chat Completions sem `store` (o padrão é n�
 
 ### Memória e esquecimento
 
-- O escritor de memória manda ao modelo `fast` só o turno pseudonimizado (`[PESSOA_1]`, `[CPF_1]`). O valor real volta só para o store, no banco do escritório, e cada memória leva os ids dos titulares que cita.
+- O escritor de memória manda ao modelo `fast` só o turno pseudonimizado (`[PESSOA_1]`, `[CPF_1]`). O valor real volta só para o store, no banco do escritório, e cada memória leva os ids dos titulares que cita. No chat ele usa o mapeamento da conversa, então o modelo vê os mesmos marcadores do turno.
+- A memória lida no chat também passa pelo guardrail antes do modelo de nuvem, com o mapeamento da conversa: o valor que já tem marcador o mantém e o novo ganha o próximo. A busca roda com o texto em claro, mas no e5 local, sem sair da máquina. O histórico devolvido ao usuário não mostra a seção de memórias.
+- Esquecer apaga a memória do store, mas não a cópia que já entrou numa conversa: a seção mascarada fica nas mensagens da thread e o valor, no mapeamento. Apagar um titular por inteiro inclui apagar essas threads, como no cofre de marcadores acima.
 - O id do titular é `ds_` mais um HMAC-SHA-256 do tipo e do valor, com a chave `EMENTA_DATA_SUBJECT_KEY`. O CPF formatado ou não dá o mesmo id. Sem a chave, o id não leva de volta ao CPF, nem testando todos. A produção não sobe o escritor sem chave própria. Trocar a chave deixa sem dono os ids já gravados: antes, é preciso reetiquetar as memórias.
 - O DPO acha os ids com `ementa.memory.data_subject_ids("Maria Souza, CPF ...")`, que devolve um id por valor achado e nunca o valor. A rota recebe só o id: um CPF no caminho é recusado com 422, e o erro não o repete, porque o `instance` é o modelo da rota, não o caminho enviado.
 - A resposta e o span do esquecimento guardam só a contagem. O evento de auditoria (quem pediu e quantas saíram) entra com a trilha de `audit.events`.
