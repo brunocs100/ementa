@@ -11,7 +11,7 @@ Catálogo dos agentes e das ferramentas da Ementa: o que cada um faz, como o gra
 | Pesquisa jurídica | `legal_research` | RAG agêntico com reflexão | F1, F2, F5 | Documentado |
 | Assistente | `assistant` | Supervisor que roteia | F3 | Implementado |
 | Análise de contratos | `contract_review` | Map-reduce por cláusula | F4 | Documentado |
-| Redação de peças | `brief_drafting` | Plan-and-execute com crítico e HITL | F4 | Documentado |
+| Redação de peças | `brief_drafting` | Plan-and-execute com crítico e HITL | F4 | Implementado |
 | Prazos e processos | `case_monitor` | Workflow agendado | F5 | Documentado |
 | Triagem e conflito | `intake` | Extração estruturada e verificação em grafo | F5 | Documentado |
 | BI do escritório | `firm_analytics` | Texto para SQL com guarda | F6 | Documentado |
@@ -304,41 +304,73 @@ flowchart TD
 
 ## Redação de peças (`brief_drafting`)
 
-**Objetivo.** Produzir o rascunho de uma peça (ex.: petição inicial de consumo) a partir dos fatos, com teses pesquisadas e citações verificadas.
+**Objetivo.** Produzir o rascunho de uma petição inicial de Direito do Consumidor a partir da descrição do caso escrita pelo advogado, com teses pesquisadas, citações verificadas e aprovação humana antes de qualquer versão final.
 
-**Gatilho e canal.** Pedido do advogado no console (F4).
+**Gatilho e canal.** Pedido do advogado no console (F4), por `services.brief_drafting_agent()`; a decisão do advogado volta pela API de aprovações.
 
-**Padrão e por quê.** Plan-and-execute com crítico e verificação. O plano separa as teses; cada tese é pesquisada pelo subgrafo do `legal_research`; o crítico revisa a coerência; o verificador bloqueia peça com citação não confirmada. Peça é o produto mais arriscado do escritório, por isso a aprovação humana é obrigatória.
+**Padrão e por quê.** Plan-and-execute com crítico e verificação. O plano separa as teses; cada tese é pesquisada pelo `legal_research`, em paralelo com `Send`; o rascunho preenche um modelo aprovado do escritório; o crítico revisa pela rubrica; o verificador bloqueia citação não confirmada. Peça é o produto mais arriscado do escritório, por isso a aprovação humana é obrigatória.
 
 ```mermaid
-stateDiagram-v2
-    [*] --> plan_brief
-    plan_brief --> research_theses
-    research_theses --> write_draft
-    write_draft --> critique
-    critique --> write_draft: ajustes
-    critique --> verify_citations: ok
-    verify_citations --> write_draft: citação falhou
-    verify_citations --> human_review: verificado
-    human_review --> write_draft: pedido de ajuste
-    human_review --> export_docx: aprovado
-    export_docx --> [*]
+flowchart TD
+    A["protect: dado pessoal vira marcador"] --> B["extract_facts"]
+    B --> C["plan_theses"]
+    C -->|"Send, uma por tese"| D["research_thesis, em paralelo"]
+    D --> E["write_draft"]
+    E -->|"rascunho novo ou revisado pelo crítico"| F["critique"]
+    F -->|"reprovou na primeira vez"| G["revise_draft"]
+    G --> E
+    F -->|"aprovou ou já revisou"| H["verify_citations"]
+    E -->|"reescrito pelas citações"| H
+    H -->|"citação falhou na primeira vez"| I["fix_citations"]
+    I --> E
+    H -->|"tudo verificado, ou a frase sai e é sinalizada"| J["prepare_review"]
+    J --> K["human_review: ask_for_approval"]
+    K --> L["finalize"]
 ```
 
-**Estado:** `case_id`, `facts`, `plan` (teses), `research` (fontes por tese), `draft`, `critique_notes`, `verification`, `review_decision`, `lawyer_edits`, `cost_usd`.
+- `protect`: a descrição passa pelo `pii_guard()` com um mapeamento por execução, guardado no estado. Os exemplos passam com uma cópia dele, descartada depois: um marcador de outro caso que o modelo copie fica como marcador e nunca vira o nome de outro cliente nesta peça.
+- `extract_facts`: papel `fast`, prompt `brief_drafting.extract` v1. JSON com autor, réus (até três), juízo, cidade, fatos, provas, o que o cliente quer e o que falta na descrição.
+- `plan_theses`: papel `reasoning`, prompt `brief_drafting.plan` v1. De uma a quatro teses, cada uma com a pergunta de pesquisa, o pedido que sustenta e o parecer do escritório que segue; o modelo recebe todos os pareceres, e id de parecer que não existe é descartado.
+- `research_thesis`: uma execução do `legal_research` por tese, em threads paralelas, cada uma com a própria conversa. A peça só cita o que ele verificou. Tese sem fonte, ou cuja pesquisa falhou, fica fora da peça e vai para o resumo; orçamento estourado para a execução.
+- `write_draft`: papel `reasoning`, prompt `brief_drafting.draft` v1. O modelo escreve só `<fatos>`, `<fundamentos>` e `<pedidos>`, citando por id; o código põe as seções no modelo do escritório, com as partes, o juízo, os pedidos do modelo e os fixos, em letras (a, b, c), e a data. Os exemplos entram como o diff entre o rascunho e a versão que o advogado aprovou, ou como o texto aprovado quando não houve edição: até três, com 3.000 caracteres cada. Resposta fora do formato ganha uma nova tentativa, acrescentada à conversa.
+- `critique`: papel `reasoning`, prompt `brief_drafting.critique` v1, numa conversa própria. Rubrica de completude, citações, pedidos e tom, em JSON. Reprovado na primeira vez, o rascunho é reescrito uma vez na mesma conversa da redação, com as notas acrescentadas; a segunda crítica é acrescentada à primeira, e o que ela ainda apontar vai para o resumo. Crítico fora do formato deixa a revisão para o advogado, com aviso.
+- `verify_citations`: o verificador do domínio confere o rascunho inteiro contra as fontes que o `legal_research` verificou para as teses, inclusive menção em prosa sem id. Falhou: o rascunho é reescrito uma vez, com o motivo acrescentado, e volta direto ao verificador; falhou de novo, a frase sai e o resumo a lista. Nenhuma citação não verificada chega à aprovação. O texto fixo dos modelos não cita nada (teste).
+- `prepare_review`: os ids viram referência por extenso (`[cdc:art42:pu]` vira "(art. 42, parágrafo único, do CDC)", por `label_citations`, testado com todos os ids do corpus) e os marcadores voltam aos valores. O resumo da aprovação sai do estado, escrito pelo código: teses com e sem fonte, fontes citadas, trechos tirados, notas do crítico, o que faltou na descrição e os campos a completar.
+- `human_review`: `ask_for_approval(ApprovalRequest(agent="brief_drafting", kind="brief", ...))`, classe restrita. Decisão que não se aplica, como `edit` sem texto ou um valor que não é `ApprovalDecision`, é pedida de novo: levantada dentro do nó, ela ficaria guardada como resposta à pausa e voltaria em toda retomada.
+- `finalize`: `approve` finaliza o rascunho que o advogado viu, `edit` o texto do advogado e `reject` encerra sem peça; guarda quem decidiu e quando.
+
+**Estado** (no checkpointer, uma thread por peça):
+
+| Campo | Conteúdo |
+|---|---|
+| `template`, `owner_id` | Modelo do escritório e quem pediu a peça |
+| `description`, `examples` | Descrição do caso e peças aprovadas antes, já com marcadores |
+| `pii_mapping` | Marcador e valor da descrição; reidrata o rascunho |
+| `facts`, `theses` | Fatos extraídos e teses planejadas (`t1`, `t2`...) |
+| `research` | Por tese, a resposta verificada e as fontes que a peça pode citar |
+| `messages`, `critic_messages` | A conversa da redação e a do crítico, só de acréscimo |
+| `draft`, `drafts`, `revision` | Último rascunho, com marcadores e ids; quantos foram escritos; o motivo da última reescrita |
+| `critiques`, `check` | Vereditos do crítico e o resultado do verificador |
+| `review` | O que o advogado aprova: título, rascunho por extenso e resumo |
+| `decision`, `outcome` | A decisão do advogado e o resultado |
 
 | Ferramenta | Tipo | Guardrails |
 |---|---|---|
-| Subgrafo `legal_research` | Leitura | Os da pesquisa |
-| `render_template` | Leitura | Só modelos aprovados do escritório |
-| `verify_citations` | Leitura | Bloqueia em vez de só remover |
-| `export_docx` | Escrita | Só depois da aprovação; auditado |
+| Subagente `legal_research` | Leitura | Os da pesquisa; a pergunta é sobre a regra, sem dado do caso |
+| Modelos do escritório (`data/firm/templates/`) | Leitura | Só modelos aprovados; o modelo de linguagem escreve só as três seções |
+| `verify_citations` | Guardrail | Bloqueia: uma reescrita e depois a frase sai, com aviso |
+| `export_docx` | Escrita | Aviso de rascunho no cabeçalho até a aprovação; depois, quem aprovou e quando |
 
-- **Modelo:** `reasoning` (effort high) para plano, rascunho e crítica.
-- **Memória:** ficha do processo; memória episódica com rascunhos aprovados e a edição do advogado, usada como exemplo few-shot e, na F9, como dado de treino.
-- **HITL:** `interrupt()` antes de exportar; o advogado aprova, edita ou devolve.
-- **Métricas:** taxa de aprovação sem edição; tamanho da edição do advogado; citações bloqueadas; custo por peça.
-- **Custo estimado:** ordem de dezenas de centavos de dólar por peça (estimativa, conferir na F4). **Fase:** F4. **Status:** Documentado.
+Dados do escritório, fictícios, em `data/firm/`: `templates/` com os modelos de petição inicial por negativação indevida e por vício do produto (front matter com título, orientação de cada seção e pedidos fixos; corpo com `{{juizo}}`, `{{autor}}`, `{{reu}}`, `{{fatos}}`, `{{fundamentos}}`, `{{pedidos}}` e `{{local_data}}`) e `opinions/` com três pareceres aprovados: dano moral por negativação indevida, vício do produto durável, e inversão do ônus da prova com tutela de urgência. Só o corpo de um parecer vai ao modelo; quem aprovou fica no front matter. Arquivo fora do formato derruba a montagem do agente, com o nome do arquivo.
+
+- **Modelo:** `fast` na extração; `reasoning` (effort high) no plano, no rascunho e na crítica.
+- **Entrada e saída:** `draft(descrição, template=..., user_id=..., examples=...)` roda até a aprovação e devolve `BriefPending` (thread, quem pediu e o `ApprovalRequest`); modelo desconhecido, descrição vazia ou modelo sem chave falham antes de qualquer chamada. `resume(thread, decisão)` termina e devolve `BriefOutcome` (situação, texto final, rascunho, quem decidiu, quando, citações e trechos tirados); `pending(thread)` e `outcome(thread)` leem de volta. A API de aprovações também pode retomar direto no grafo, com `Command(resume=decision.model_dump())` e o id da thread.
+- **DOCX:** `export_docx(título, texto)` gera o arquivo (python-docx 1.2, MIT) com "Rascunho para conferência do advogado responsável" no cabeçalho de cada página; com `approved_by` e `approved_at`, o cabeçalho diz quem aprovou e quando, no horário de Brasília. O arquivo é gerado sob demanda e não vai para o checkpoint.
+- **Memória:** curta no checkpointer do Postgres: a peça espera dias pela aprovação e sobrevive a reinício do processo (teste de integração). Episódica: `examples` recebe peças aprovadas com a edição do advogado (`BriefExample`: rascunho, versão final e comentário), que a memória episódica fornece; na F9, o mesmo par vira dado de treino.
+- **HITL:** obrigatória. Nada vira final sem a decisão do advogado.
+- **Telemetria:** `invoke_agent brief_drafting` na execução e de novo na retomada, com `gen_ai.conversation.id`; dentro dele, `guardrail pii`, um `execute_tool legal_research` por tese (com o `invoke_agent legal_research` embaixo) e `guardrail citation_verifier` (`pass`, `block` quando volta para reescrita, `modified` quando a frase sai). Eventos `ementa.context.section_tokens`, a cada pedido montado, e `ementa.brief.critique`, a cada crítica.
+- **Métricas:** taxa de aprovação sem edição; linhas mudadas pelo advogado (`ementa.brief.changed_lines`); citações bloqueadas; custo por peça.
+- **Custo estimado:** de três a seis chamadas `reasoning` (plano, de um a três rascunhos, uma ou duas críticas) e uma `fast` por peça, mais uma pesquisa por tese; ordem de dezenas de centavos de dólar (estimativa: nenhuma chamada paga foi feita nesta fase). **Fase:** F4. **Status:** Implementado (grafo, aprovação e DOCX, testados com modelos falsos); a rota `POST /v1/briefs` e o console entram com a API de aprovações.
 
 ## Prazos e processos (`case_monitor`)
 

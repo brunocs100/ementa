@@ -56,6 +56,13 @@ Atributos próprios do projeto:
 | `ementa.context.compacted` | evento no span corrente (no `assistant`, o `invoke_agent` do turno que compacta), com `messages.before`, `tokens.before`, `tokens.after` e o prompt do resumo | `{"messages.before": 41, "tokens.before": 9120, "tokens.after": 520, ...}` |
 | `ementa.area` | string | `consumidor`: área de atuação dos spans GenAI abertos dentro de `practice_area()` |
 | `ementa.job.outcome` | string | `succeeded`, `retry` ou `failed`, por tentativa |
+| `ementa.brief.template`, `ementa.brief.theses`, `ementa.brief.grounded`, `ementa.brief.drafts` | string, int | No `invoke_agent brief_drafting`: o modelo de peça, as teses planejadas, as que têm fonte verificada e os rascunhos escritos |
+| `ementa.brief.verdict` | string | Último veredito do crítico da peça: `passed`, `failed` ou `unavailable` (resposta fora do formato) |
+| `ementa.brief.citations`, `ementa.brief.removed` | string[], int | Fontes citadas no rascunho que foi à aprovação e citações não verificadas tiradas dele |
+| `ementa.brief.thesis` | string | No `execute_tool legal_research` do `brief_drafting`: a tese pesquisada (`t1`) |
+| `ementa.brief.critique` | evento no `invoke_agent brief_drafting`, um por crítica, com `status`, `failed` (critérios reprovados) e `round` | `{"status": "failed", "failed": ["tone"], "round": 1}` |
+| `ementa.approval.status`, `ementa.approval.action` | string | `pending` quando a peça para na aprovação; na retomada, a decisão (`approve`, `edit`, `reject`) e o resultado (`approved`, `edited`, `rejected`) |
+| `ementa.brief.changed_lines` | int | Na retomada com `edit`: linhas que o advogado tirou do rascunho ou pôs nele |
 
 As chamadas à OpenAI usam a instrumentação oficial (`opentelemetry-instrumentation-openai-v2` 2.4b0, que cobre Chat Completions e embeddings; a Responses API não é coberta, por isso a F1 usa Chat Completions). FastAPI, httpx e psycopg entram com instrumentação automática.
 

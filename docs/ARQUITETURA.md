@@ -205,17 +205,19 @@ sequenceDiagram
     participant G as brief_drafting
     participant P as legal_research
     participant L as OpenAI
-    A->>W: pede contestação com os fatos
+    A->>W: pede petição inicial com os fatos
     W->>G: inicia a execução
+    G->>G: pseudonimiza a descrição
     G->>P: pesquisa cada tese em paralelo
     P-->>G: fontes verificadas
     G->>L: rascunho por template
     G->>L: crítica com rubrica
     G->>G: verifica citações
     G-->>W: interrupt, aguardando aprovação
-    A->>W: aprova com edições
+    A->>W: aprova, edita ou rejeita
     W->>G: retoma do checkpoint
-    G-->>W: DOCX com aviso de rascunho
+    G-->>W: peça final, com quem aprovou e quando
+    W-->>A: DOCX com a aprovação no cabeçalho
 ```
 
 ### Documento do escritório em fila (F3)
