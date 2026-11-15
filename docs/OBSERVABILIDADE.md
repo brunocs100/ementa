@@ -111,7 +111,7 @@ Os dashboards ficam versionados em `infra/grafana/` e sobem junto com o containe
 
 ## Custo
 
-- Tabela de preço por modelo versionada no repo (`ementa_kit/llm/prices.yaml`), com data da última conferência.
+- Tabela de preço por modelo versionada no repo (`ementa_kit/llm/prices.toml`), com data da última conferência.
 - Custo por chamada = tokens de entrada sem cache × preço de entrada + tokens em cache × preço de cache + tokens de saída × preço de saída.
 - O span `chat` grava o custo; o `invoke_agent` soma; a métrica `ementa_cost_usd_total` agrega por modelo, agente, área e rota. O custo por advogado sai do trace (atributo do usuário), não de rótulo de métrica.
 - Referência: cerca de US$ 0,015 por pergunta de pesquisa e US$ 0,75 por rodada de avaliação; teto de US$ 2 por dia e US$ 30 por mês.
