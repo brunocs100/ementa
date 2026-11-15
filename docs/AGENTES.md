@@ -95,6 +95,7 @@ O que o runner faz valer:
 - `reject` devolve o controle ao agente: ele termina, e a execução fica `rejected`, ou redige de novo e pergunta outra vez, o que abre uma aprovação nova.
 - Grafo que termina sem ter perguntado falha a execução: nada sai finalizado sem decisão.
 - `result` devolve JSON. O resultado fica em `ai.runs` e aparece no `run` de `GET /v1/approvals/{id}`.
+- O estado guarda só valores simples: os `examples` como `dict`, a decisão como `decision.model_dump()`. O checkpointer do LangGraph 1.2 já avisa ao ler um tipo que não conhece, como `Episode` ou `ApprovalDecision`, e diz que vai recusá-lo numa versão próxima.
 
 ## Pesquisa jurídica (`legal_research`)
 
