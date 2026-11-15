@@ -1,11 +1,11 @@
 ---
 name: legal-research
-description: Pesquisa jurídica com citação verificada no corpus público da Ementa (hoje, o Código de Defesa do Consumidor). Use quando o pedido for uma pergunta de direito, o texto de um artigo de lei ou uma resposta que precise citar a fonte.
+description: Pesquisa jurídica com citação verificada no corpus público da Ementa (CDC, LGPD, CPC, súmulas do STJ sobre consumo e súmulas vinculantes do STF). Use quando o pedido for uma pergunta de direito, o texto de um artigo de lei ou uma resposta que precise citar a fonte.
 ---
 
 # Pesquisa jurídica com citação
 
-A resposta é rascunho para o advogado responsável conferir, nunca aconselhamento ao cliente final. O corpus é o que `search_legal_corpus` alcança: hoje, só o CDC.
+A resposta é rascunho para o advogado responsável conferir, nunca aconselhamento ao cliente final. O corpus é o que `search_legal_corpus` alcança: CDC, LGPD, CPC, súmulas do STJ sobre consumo e súmulas vinculantes do STF. Fora disso, diga que não há fonte.
 
 ## Qual ferramenta usar
 
@@ -18,7 +18,7 @@ A resposta é rascunho para o advogado responsável conferir, nunca aconselhamen
 
 ## Como pesquisar
 
-1. Se o pedido já cita o artigo ("art. 49 do CDC"), leia o texto oficial com `get_statute_article` e o id de fonte, como `cdc:art49`.
+1. Se o pedido já cita o artigo ("art. 49 do CDC"), leia o texto oficial com `get_statute_article` e o id de fonte, como `cdc:art49`, `cpc:art219` ou `stj:sumula:385`.
 2. Para uma pergunta, use `answer_legal_question`. Ela busca as fontes, escreve a resposta e passa pelo verificador de citações.
 3. Leia a saída inteira. O que está em `removed` não foi verificado e saiu da resposta: não ponha de volta.
 4. Se `grounded` vier falso, diga que as fontes não bastam e que a pergunta precisa de pesquisa do advogado. Não complete de memória.
