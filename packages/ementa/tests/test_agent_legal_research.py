@@ -82,7 +82,7 @@ def test_answer_with_verified_citation_in_one_attempt() -> None:
     assert [c.source_id for c in answer.citations] == ["cdc:art49"]
     assert answer.attempts == 1
     assert answer.removed == []
-    assert answer.prompt == "legal_research.answer@1"
+    assert answer.prompt == "legal_research.answer@2"
     assert retriever.queries == [QUESTION, "direito de arrependimento", "prazo"]
     context = chats[ModelRole.DEFAULT].calls[0][1].text
     assert "[cdc:art49:pu] Parágrafo único." in context

@@ -23,8 +23,8 @@ from ementa_kit.rag import Hit
 from ementa_kit.telemetry import get_logger, get_tracer
 
 AGENT_ID = "legal_research"
-ANSWER_PROMPT = ("legal_research.answer", 1)
-REWRITE_PROMPT = ("legal_research.rewrite", 1)
+ANSWER_PROMPT = ("legal_research.answer", 2)
+REWRITE_PROMPT = ("legal_research.rewrite", 2)
 MAX_ATTEMPTS = 2  # first answer plus one retry
 CONTEXT_LIMIT = 5
 MAX_REWRITES = 3
