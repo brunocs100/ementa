@@ -405,6 +405,14 @@ def test_a_thread_is_found_only_by_its_owner() -> None:
         agent.chat("Oi", user_id="ana", thread_id=str(uuid.uuid4()))
 
 
+def test_a_case_id_the_memory_cannot_take_fails_before_the_first_event() -> None:
+    agent, fast, _ = make_agent([AIMessage("Olá.")])
+
+    with pytest.raises(ValueError, match=r"no '\.'"):  # a CNJ number is not a case id
+        agent.chat("Oi", user_id="ana", case_id="0001234-56.2026.8.21.0001")
+    assert fast.calls == []
+
+
 def test_a_missing_model_key_fails_before_the_first_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

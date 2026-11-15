@@ -392,10 +392,12 @@ class AssistantAgent:
         last event, and the memory writer runs after it, before the iterator ends. Only the
         tools in `allowed_tools` are offered to the model and run. With `case_id` the turn also
         reads and writes the card of that case: pass only a case the user may see, since its
-        memories follow its permission.
+        memories follow its permission. An id the memory store cannot take, such as one with a
+        dot, raises ValueError here too.
         """
         values = self._owned(thread_id, user_id) if thread_id else State()
         self.models.chat(ModelRole.FAST)
+        chat_targets(user_id, case_id)  # the namespaces the turn writes to after `done`
         tools = [name for name in TOOLS if name in allowed_tools]
         return self._run(message, thread_id or _new_id(), user_id, case_id, tools, values)
 
