@@ -8,6 +8,7 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
+from ementa.ingest.corpus import SOURCE_IDS
 from ementa_kit.config import Settings, get_settings
 from ementa_kit.rag import FastEmbedder, PgHybridStore
 from ementa_kit.telemetry import setup
@@ -21,8 +22,11 @@ def _ingest(args: argparse.Namespace, settings: Settings) -> int:
     from ementa.ingest.index import ingest_statute
 
     embedder = FastEmbedder(settings.embedding_model)
-    written = ingest_statute(args.source, _store(settings, embedder), embedder, reset=args.reset)
-    print(f"{args.source}: {written} chunks ({embedder.model_name}, dim {embedder.dim})")
+    store = _store(settings, embedder)
+    sources = SOURCE_IDS if args.source == "all" else (args.source,)
+    for n, source in enumerate(sources):
+        written = ingest_statute(source, store, embedder, reset=args.reset and n == 0)
+        print(f"{source}: {written} chunks ({embedder.model_name}, dim {embedder.dim})")
     return 0
 
 
@@ -108,7 +112,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     ingest = sub.add_parser("ingest", help="load a corpus snapshot into the knowledge base")
-    ingest.add_argument("source", choices=["cdc"])
+    ingest.add_argument("source", choices=[*SOURCE_IDS, "all"])
     ingest.add_argument("--reset", action="store_true", help="drop the knowledge schema first")
 
     search = sub.add_parser("search", help="hybrid search over the corpus")

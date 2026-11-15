@@ -3,6 +3,8 @@
 Each `<p>` holds one provision: article, paragraph, inciso or alínea. Struck text is old wording
 and is dropped. Amendment notes such as "(Incluído pela Lei nº 14.181, de 2021)" leave the text
 and go to `notes`. Text of another law quoted by an amending article stays inside that article.
+Article numbers lose the thousands dot in ids ("Art. 1.003" is `cpc:art1003`) and keep it in the
+rendered text; lettered provisions keep the letter (`cpc:art246:p1-A`, `lgpd:art65:I-A`).
 """
 
 import re
@@ -10,21 +12,36 @@ import unicodedata
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 
-HEADING_LEVELS = {"TÍTULO": 0, "CAPÍTULO": 1, "SEÇÃO": 2, "Seção": 2, "Subseção": 3}
+HEADING_LEVELS = {
+    "PARTE": -2,
+    "LIVRO": -1,
+    "TÍTULO": 0,
+    "CAPÍTULO": 1,
+    "SEÇÃO": 2,
+    "Seção": 2,
+    "Subseção": 3,
+}
 
-_ARTICLE = re.compile(r"^Art\.\s*(\d+)\s*[º°o]?\s*(?:-\s*([A-Z]))?\s*[.\-–]?\s*(.*)$")
-_PARAGRAPH = re.compile(r"^§\s*(\d+)\s*\.?\s*[º°o]?\s*\.?\s*[-–]?\s*(.*)$")
+# "1.003" (thousands dot) or "57", which one LGPD page prints as "5 7".
+_ARTICLE = re.compile(
+    r"^Art\.\s*(\d{1,3}(?:\.\d{3})+|\d+(?: \d)?)\s*[º°o]?\s*(?:-\s*([A-Z]))?\s*[.\-–]?\s*(.*)$"
+)
+_PARAGRAPH = re.compile(r"^§\s*(\d+)\s*\.?\s*[º°o]?(?:-([A-Z])\b)?\s*\.?\s*[-–]?\s*(.*)$")
 _SOLE_PARAGRAPH = re.compile(r"^Parágrafo\s+único\s*\.?\s*[-–]?\s*(.*)$", re.IGNORECASE)
-_INCISO = re.compile(r"^([IVXLC]+)\s*[-–]\s*(.*)$")
+_INCISO = re.compile(r"^([IVXLC]+(?:-[A-Z])?)\s*[-–]\s*(.*)$")
 _ALINEA = re.compile(r"^([a-z])\)\s*(.*)$")
-_HEADING = re.compile(r"^(TÍTULO|CAPÍTULO|SEÇÃO|Seção|Subseção)\s+([IVXLC]+(?:-[A-Z])?)\b\s*(.*)$")
+_HEADING = re.compile(
+    r"^(PARTE|LIVRO|TÍTULO|CAPÍTULO|SEÇÃO|Seção|Subseção)\s+"
+    r"([IVXLC]+(?:-[A-Z])?|ÚNIC[OA]|Únic[oa]|GERAL|ESPECIAL|COMPLEMENTAR)\b\s*(.*)$"
+)
 _NOTE = re.compile(
     r"\s*\((?:Redação dada|Incluíd[oa]|Acrescid[oa]|Revogad[oa]|Vide|Renumerad[oa]|Vigência)"
     r"[^)]*\)"
 )
 _LINK_WORD = re.compile(r"\s+Vigência$")  # leftover text of a "Vigência" link
 _VETOED = re.compile(r"^\(?\s*vetad[oa]\s*\)?\s*[.;]?$", re.IGNORECASE)
-_END = re.compile(r"^Brasília,\s")
+_END = re.compile(r"^Brasília\s*,\s")
+_NEW_WORDING = re.compile(r"\s*\(NR\)\s*$")  # "nova redação" mark after a quoted provision
 _OPEN_QUOTE = ('"', "“")
 _CLOSE_QUOTE = ('"', "”")
 
@@ -32,7 +49,7 @@ _CLOSE_QUOTE = ('"', "”")
 @dataclass
 class Provision:
     id: str
-    kind: str  # article, paragraph, inciso, alinea
+    kind: str  # article, paragraph, inciso, alinea; sumula for a súmula (ingest.sumulas)
     label: str
     text: str
     notes: list[str] = field(default_factory=list)
@@ -45,17 +62,35 @@ class Article:
     number: str
     path: list[str]
     provisions: list[Provision] = field(default_factory=list)
+    title: str = ""  # a súmula's own title; an article's comes from its statute
+    url: str = ""  # the unit's own official page, when it has one
 
     @property
     def vetoed(self) -> bool:
         return self.provisions[0].vetoed
 
+    @property
+    def revoked(self) -> bool:
+        """No provision has text left, as in "Art. 55-B. (Revogado pela Lei nº 14.460, de 2022)"."""
+        return not any(p.text for p in self.provisions)
+
     def render(self) -> str:
-        """Full text of the article, one provision per line, in the statute's own style."""
-        return "\n".join(f"{_lead(p, self.number)} {p.text}".strip() for p in self.provisions)
+        """Full text of the article, one provision per line, in the statute's own style.
+
+        A provision whose text was revoked shows the revocation note, so its line is not empty.
+        """
+        return "\n".join(
+            f"{_lead(p, self.number)} {p.text or _revocation(p)}".strip() for p in self.provisions
+        )
+
+
+def _revocation(provision: Provision) -> str:
+    return next((n for n in provision.notes if n.startswith("(Revogad")), "")
 
 
 def _lead(provision: Provision, number: str) -> str:
+    if provision.kind == "sumula":
+        return f"{provision.label}:"
     if provision.kind == "article":
         ordinal = number.isdigit() and int(number) < 10
         return f"Art. {number}º" if ordinal else f"Art. {number}."
@@ -104,7 +139,28 @@ def _split_notes(text: str) -> tuple[str, list[str]]:
 
 
 def _closes_quote(text: str) -> bool:
-    return text.rstrip(" .;:").endswith(_CLOSE_QUOTE)
+    return _NEW_WORDING.sub("", text).rstrip(" .;:").endswith(_CLOSE_QUOTE)
+
+
+def _article_number(raw: str, letter: str | None) -> tuple[str, str]:
+    """("1.003", None) -> ("1003", "1.003"): the number for the id and the one to display."""
+    digits = int(raw.replace(".", "").replace(" ", ""))
+    suffix = f"-{letter}" if letter else ""
+    return f"{digits}{suffix}", f"{digits:,}".replace(",", ".") + suffix
+
+
+def _paragraph_label(number: str, letter: str | None) -> str:
+    """§ 1º, § 6º-A, § 10. (ordinal up to nine, cardinal from ten on, as the statutes write)."""
+    suffix = f"-{letter}" if letter else ""
+    return f"§ {number}º{suffix}" if int(number) < 10 else f"§ {number}{suffix}."
+
+
+def _heading(kind: str, designator: str, title: str) -> str:
+    """Heading as in the path: LIVRO IV DOS ATOS -> "Livro IV DOS ATOS", TÍTULO ÚNICO -> "Título
+    Único". Roman numerals keep their case; words such as ÚNICO or GERAL are capitalized."""
+    if not re.fullmatch(r"[IVXLC]+(?:-[A-Z])?", designator):
+        designator = designator.capitalize()
+    return f"{kind.capitalize()} {designator} {title}".strip()
 
 
 def paragraphs(html: str) -> list[str]:
@@ -141,13 +197,13 @@ def parse_statute(html: str, prefix: str) -> list[Article]:
         if m := _HEADING.match(text):
             level = HEADING_LEVELS[m.group(1)]
             headings = [h for h in headings if h[0] < level]
-            headings.append((level, f"{m.group(1).capitalize()} {m.group(2)} {m.group(3)}".strip()))
+            headings.append((level, _heading(m.group(1), m.group(2), m.group(3))))
             heading_open = not m.group(3)
             continue
 
         if m := _ARTICLE.match(text):
-            number = m.group(1) + (f"-{m.group(2)}" if m.group(2) else "")
-            art_id = f"{prefix}:art{number}"
+            canonical, number = _article_number(m.group(1), m.group(2))
+            art_id = f"{prefix}:art{canonical}"
             article = Article(id=art_id, number=number, path=[h[1] for h in headings])
             articles.append(article)
             body = m.group(3)
@@ -175,8 +231,9 @@ def parse_statute(html: str, prefix: str) -> list[Article]:
             provision = Provision(pid, "paragraph", "Parágrafo único", m.group(1), notes)
             parent_of_inciso, last_inciso = pid, None
         elif m := _PARAGRAPH.match(text):
-            pid = f"{article.id}:p{m.group(1)}"
-            provision = Provision(pid, "paragraph", f"§ {m.group(1)}º", m.group(2), notes)
+            pid = f"{article.id}:p{m.group(1)}" + (f"-{m.group(2)}" if m.group(2) else "")
+            label = _paragraph_label(m.group(1), m.group(2))
+            provision = Provision(pid, "paragraph", label, m.group(3), notes)
             parent_of_inciso, last_inciso = pid, None
         elif (m := _INCISO.match(text)) and parent_of_inciso:
             pid = f"{parent_of_inciso}:{m.group(1)}"
