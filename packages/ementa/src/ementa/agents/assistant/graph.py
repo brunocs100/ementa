@@ -4,7 +4,10 @@ checkpointer, one thread per conversation, so it survives a restart.
 
 supervisor -> tools -> supervisor ... -> finalize. Only pseudonymized text reaches the model: the
 user's message is masked before it enters the graph, with one marker mapping per thread kept in
-the thread state, and the reply gets the real values back on its way out, word by word.
+the thread state, and the reply gets the real values back on its way out, word by word. The
+long-term memories relevant to the message enter with it, masked with the same mapping, and
+what the finished turn taught is written to the long-term memory after `done`. Past its context
+budget, the model's view of a thread starts again from a summary; the state keeps every message.
 """
 
 import json
@@ -29,6 +32,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.store.base import BaseStore
 from langgraph.types import StreamMode
 from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode
@@ -45,10 +49,13 @@ from ementa.agents.assistant.schemas import (
 )
 from ementa.agents.legal_research import ResearchAnswer
 from ementa.domain.citations import verify_citations
+from ementa.memory import chat_targets, memory_section, relevant_memories
 from ementa.prompts import get_prompt
 from ementa.tools import deadlines, research
 from ementa.tools.research import CitationOut, RemovedOut
+from ementa_kit.context import Section, build_user_turn, compact
 from ementa_kit.llm import ModelRegistry, ModelRole
+from ementa_kit.memory import MemoryWriter, Namespace
 from ementa_kit.policy import DataClass
 from ementa_kit.telemetry import get_logger, get_tracer
 
@@ -57,6 +64,7 @@ if TYPE_CHECKING:  # Presidio and spaCy take seconds to import; they load on the
 
 AGENT_ID = "assistant"
 SUPERVISOR_PROMPT = ("assistant.supervisor", 1)
+SUMMARY_PROMPT = ("context.summarize", 1)
 LEGAL_RESEARCH = "legal_research"
 CALCULATE_DEADLINE = "calculate_deadline"
 TOOLS = (LEGAL_RESEARCH, CALCULATE_DEADLINE)  # in the order the model is offered them
@@ -106,12 +114,14 @@ class TurnRecord(TypedDict):
 
 
 class State(TypedDict, total=False):
-    messages: Annotated[list[BaseMessage], operator.add]  # what the model saw; only grows
+    messages: Annotated[list[BaseMessage], operator.add]  # all the model saw; only grows
+    view_start: int  # index of the last summary; the view is the system prompt, then from here
     pii_mapping: dict[str, str]  # marker -> value for the whole thread; only grows
     owner_id: str
     prompt: str  # id@version of the system prompt, frozen with it when the thread starts
     allowed_tools: list[str]  # for this turn, from the caller's role
     rounds: int  # model calls in this turn
+    question: str  # this turn's message, masked, without the memories that came with it
     sources: Annotated[list[SourceRecord], operator.add]  # verified by legal_research
     turns: Annotated[list[TurnRecord], operator.add]
 
@@ -138,19 +148,27 @@ class AgentTool:
 
 
 def model_view(state: State) -> list[BaseMessage]:
-    """What the model receives: the thread's messages as stored, system prompt first.
+    """What the model receives, derived from the thread's messages as stored.
 
-    Nothing is edited, dropped or reordered, so every request starts with the previous one and
-    the provider's prompt cache holds. New context only enters as a new message at the end.
+    Until a compaction, all of them, system prompt first. After one, a new conversation: the
+    system prompt, then the messages from `view_start` on, the summary first. The state keeps
+    the old ones for audit. Nothing is edited, dropped or reordered between two requests of a
+    view, so each starts with the previous one and the provider's prompt cache holds. New
+    context only enters as a new message at the end.
     """
-    return list(state.get("messages", []))
+    messages = state.get("messages", [])
+    start = state.get("view_start", 0)
+    return [*messages[:1], *messages[start:]] if start else list(messages)
 
 
 class AssistantAgent:
     """`chat` runs a turn and streams its events; `history` reads a thread back.
 
-    `researcher` and `guard` are factories, called on first use: the research agent loads the
-    embedding model and the guard loads spaCy, neither needed to read a history.
+    `researcher`, `guard`, `memories` (the long-term memory store) and `writer` are factories,
+    called on first use: the research agent and the store load the embedding model and the
+    guard loads spaCy, none of them needed to read a history. Without `memories` a turn reads no
+    memory; without `writer` it writes none. Once the model's view of a thread passes
+    `context_budget` tokens, the next turn starts it again from a summary; None never does.
     """
 
     def __init__(
@@ -159,12 +177,20 @@ class AssistantAgent:
         researcher: Callable[[], Researcher],
         checkpointer: BaseCheckpointSaver[Any],
         guard: Callable[[], "PiiGuard"],
+        *,
+        memories: Callable[[], BaseStore] | None = None,
+        writer: Callable[[], MemoryWriter] | None = None,
+        context_budget: int | None = None,
     ) -> None:
         self.models = models
         self._researcher = researcher
         self._guard = guard
+        self._memories = memories
+        self._writer = writer
+        self.context_budget = context_budget
         self.prompt = get_prompt(*SUPERVISOR_PROMPT)
         self.prompt_label = f"{self.prompt.id}@{self.prompt.version}"
+        self.summary_prompt = get_prompt(*SUMMARY_PROMPT)
         self.tools = {
             LEGAL_RESEARCH: AgentTool(
                 LEGAL_RESEARCH,
@@ -250,19 +276,21 @@ class AssistantAgent:
         )
         return message, result.sources if result else [], status
 
+    def _model(self, tools: Sequence[str], choice: str) -> Runnable[LanguageModelInput, AIMessage]:
+        """The `fast` model offering `tools`. The list keeps the same order and stays even when
+        `choice` is "none", so the requests of a thread keep their prefix."""
+        chat = self.models.chat(ModelRole.FAST)
+        offered = [self._definitions[n] for n in TOOLS if n in tools]
+        return chat.bind_tools(offered, tool_choice=choice) if offered else chat
+
     # Nodes -------------------------------------------------------------------------------
 
     def supervisor(self, state: State) -> State:
         write = get_stream_writer()
         write(StepEvent(name="supervisor", status="started"))
         rounds = state.get("rounds", 0)
-        offered = [self._definitions[n] for n in TOOLS if n in state.get("allowed_tools", [])]
-        chat = self.models.chat(ModelRole.FAST)
-        model: Runnable[LanguageModelInput, AIMessage] = chat
-        if offered:
-            # Same tools on every call, so the request prefix stays; the last round must answer.
-            choice = "auto" if rounds < MAX_ROUNDS else "none"
-            model = chat.bind_tools(offered, tool_choice=choice)
+        choice = "auto" if rounds < MAX_ROUNDS else "none"  # the last round must answer
+        model = self._model(state.get("allowed_tools", []), choice)
         reply = model.invoke(model_view(state))
         write(StepEvent(name="supervisor", status="finished"))
         return {"messages": [reply], "rounds": rounds + 1}
@@ -311,11 +339,8 @@ class AssistantAgent:
                 "ementa.guardrail.decision", "modified" if checked.removed else "pass"
             )
             span.set_attribute("ementa.guardrail.removed", len(checked.removed))
-        asked = next(
-            (m.text for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), ""
-        )
         turn = TurnRecord(
-            user=asked,
+            user=state.get("question", ""),
             reply=checked.text or NO_REPLY,
             citations=checked.valid,
             removed=[
@@ -356,19 +381,25 @@ class AssistantAgent:
         *,
         user_id: str,
         thread_id: str | None = None,
+        case_id: str | None = None,
         allowed_tools: Sequence[str] = TOOLS,
     ) -> Iterator[ChatEvent]:
         """Start a turn of `user_id`'s thread, or of a new one without `thread_id`.
 
         What can fail before the first event fails here, while an HTTP error can still be sent:
         a thread that is not the caller's raises ThreadNotFoundError, a model without a key
-        raises ModelUnavailableError. The turn runs as the iterator is consumed; `done` is last.
-        Only the tools in `allowed_tools` are offered to the model and run.
+        raises ModelUnavailableError. The turn runs as the iterator is consumed; `done` is the
+        last event, and the memory writer runs after it, before the iterator ends. Only the
+        tools in `allowed_tools` are offered to the model and run. With `case_id` the turn also
+        reads and writes the card of that case: pass only a case the user may see, since its
+        memories follow its permission. An id the memory store cannot take, such as one with a
+        dot, raises ValueError here too.
         """
         values = self._owned(thread_id, user_id) if thread_id else State()
         self.models.chat(ModelRole.FAST)
+        chat_targets(user_id, case_id)  # the namespaces the turn writes to after `done`
         tools = [name for name in TOOLS if name in allowed_tools]
-        return self._run(message, thread_id or _new_id(), user_id, tools, values)
+        return self._run(message, thread_id or _new_id(), user_id, case_id, tools, values)
 
     def history(self, thread_id: str, *, user_id: str) -> ThreadHistory:
         """The finished turns of `user_id`'s thread, with the real values back."""
@@ -399,6 +430,7 @@ class AssistantAgent:
         message: str,
         thread_id: str,
         user_id: str,
+        case_id: str | None,
         allowed_tools: list[str],
         values: State,
     ) -> Iterator[ChatEvent]:
@@ -418,7 +450,7 @@ class AssistantAgent:
             },
         )
         try:
-            turn = self._turn(message, thread_id, user_id, allowed_tools, values, span)
+            turn = self._turn(message, thread_id, user_id, case_id, allowed_tools, values, span)
             yield from _with_span(span, turn)
         finally:
             span.end()
@@ -428,15 +460,24 @@ class AssistantAgent:
         message: str,
         thread_id: str,
         user_id: str,
+        case_id: str | None,
         allowed_tools: list[str],
         values: State,
         span: Span,
     ) -> Iterator[ChatEvent]:
         from ementa_kit.guardrails.pii import MarkerStream, rehydrate
 
-        masked = self._guard().pseudonymize(message, values.get("pii_mapping"), stage="input")
-        inputs = self._inputs(values, masked.text, masked.mapping, user_id, allowed_tools)
-        tokens = MarkerStream(masked.mapping)
+        guard = self._guard()
+        masked = guard.pseudonymize(message, values.get("pii_mapping"), stage="input")
+        mapping = masked.mapping
+        sections: list[Section] = []
+        recalled = self._recall(message, user_id, case_id)
+        if recalled is not None:  # the memories hold values as said: masked like the message
+            hidden = guard.pseudonymize(recalled.content, mapping, stage="input")
+            mapping = hidden.mapping
+            sections.append(Section(recalled.name, hidden.text))
+        inputs = self._inputs(values, masked.text, sections, mapping, user_id, allowed_tools)
+        tokens = MarkerStream(mapping)
         cited: set[str] = set()
         turn: TurnRecord | None = None
         modes: list[StreamMode] = ["messages", "custom", "updates"]  # tokens, node events, outputs
@@ -462,34 +503,97 @@ class AssistantAgent:
             raise RuntimeError("the turn ended without a reply")
         span.set_attribute("ementa.answer.citations", turn["citations"])
         span.set_attribute("ementa.answer.removed", len(turn["removed"]))
+        reply = rehydrate(turn["reply"], mapping)
         yield DoneEvent(
             thread_id=thread_id,
-            message=rehydrate(turn["reply"], masked.mapping),
+            message=reply,
             removed=[RemovedOut(**r) for r in turn["removed"]],
+        )
+        self._learn(
+            [HumanMessage(message), AIMessage(reply)], chat_targets(user_id, case_id), mapping
         )
 
     def _inputs(
         self,
         values: State,
         text: str,
+        sections: Sequence[Section],
         mapping: dict[str, str],
         user_id: str,
         allowed_tools: list[str],
     ) -> State:
         """The turn's input. A new thread opens with the system prompt, frozen from then on:
-        later turns only append, even after the prompt file gets a new version."""
+        later turns only append, even after the prompt file gets a new version. The turn's own
+        context (`sections`, the memories) enters in the new message, ahead of the question.
+        Past the context budget, a summary goes in first and the view starts again from it."""
         history = values.get("messages", [])
         opening: list[BaseMessage] = (
             [] if history else [SystemMessage(self.prompt.text, id=_new_id())]
         )
+        closing = _close_dangling(history)
+        summary = self._summary([*model_view(values), *closing], values.get("allowed_tools", []))
+        start = len(history) + len(closing) if summary else values.get("view_start", 0)
+        content = build_user_turn(sections, text).text if sections else text
         return {
-            "messages": [*opening, *_close_dangling(history), HumanMessage(text, id=_new_id())],
+            "messages": [*opening, *closing, *summary, HumanMessage(content, id=_new_id())],
+            "view_start": start,
             "pii_mapping": mapping,
             "owner_id": user_id,
             "prompt": values.get("prompt", self.prompt_label),
             "allowed_tools": allowed_tools,
             "rounds": 0,
+            "question": text,
         }
+
+    def _summary(self, view: list[BaseMessage], tools: Sequence[str]) -> list[BaseMessage]:
+        """Past the context budget, the summary of `view` as a message to append, where the
+        view starts again. `compact` asks for it by appending its prompt to `view`, with the
+        tools of the last turn, so the request extends the last one and its cached prefix; the
+        `ementa.context.compacted` event goes to the turn's span. Nothing while the view fits,
+        or when the summary fails: the view stays whole, and the next turn tries again."""
+        if self.context_budget is None or not view:
+            return []
+        try:
+            compaction = compact(
+                view, self._model(tools, "none"), self.summary_prompt, budget=self.context_budget
+            )
+        except Exception as exc:
+            log.warning("compaction_failed", error=type(exc).__name__)
+            return []
+        if compaction is None:
+            return []
+        return [  # the system prompt opening the new conversation is already the first message
+            m.model_copy(update={"id": _new_id()})
+            for m in compaction.messages
+            if not isinstance(m, SystemMessage)
+        ]
+
+    def _recall(self, message: str, user_id: str, case_id: str | None) -> Section | None:
+        """The `memorias` section of the turn, with the values in clear: the user's preferences,
+        the card of the case and the firm's theses closest to the message as typed, since the
+        memories keep the values as said. The search runs here, on the local embedder. A store
+        that fails costs the turn its memories, not its reply."""
+        if self._memories is None:
+            return None
+        try:
+            found = relevant_memories(self._memories(), message, user_id=user_id, case_id=case_id)
+        except Exception as exc:
+            log.warning("memory_read_failed", error=type(exc).__name__)
+            return None
+        return memory_section(found)
+
+    def _learn(
+        self, turn: Sequence[BaseMessage], targets: Sequence[Namespace], mapping: dict[str, str]
+    ) -> None:
+        """What the finished turn taught, into the long-term memory. The writer masks the turn
+        with the thread's mapping, so its model sees the markers of the conversation. The user
+        already has the reply: a failure is logged and the turn ends as usual."""
+        if self._writer is None:
+            return
+        try:
+            self._writer().write(turn, targets, mapping)
+        except Exception as exc:
+            log.warning("memory_write_failed", error=type(exc).__name__)
 
 
 def _close_dangling(history: Sequence[BaseMessage]) -> list[BaseMessage]:

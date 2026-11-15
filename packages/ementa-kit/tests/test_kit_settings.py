@@ -107,3 +107,28 @@ def test_jwt_settings_refuse_weak_values(
 
     with pytest.raises(ValueError, match=f"jwt_{name.lower()}"):
         Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_the_assistant_writes_memory_by_default_and_can_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("EMENTA_MEMORY_WRITE_ENABLED", raising=False)
+    default = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    monkeypatch.setenv("EMENTA_MEMORY_WRITE_ENABLED", "false")
+    changed = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert default.memory_write_enabled is True
+    assert changed.memory_write_enabled is False
+
+
+def test_the_context_budget_has_a_default_and_a_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("EMENTA_CONTEXT_BUDGET_TOKENS", raising=False)
+    default = Settings(_env_file=None)  # type: ignore[call-arg]
+    monkeypatch.setenv("EMENTA_CONTEXT_BUDGET_TOKENS", "4000")
+    changed = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert (default.context_budget_tokens, changed.context_budget_tokens) == (8000, 4000)
+    monkeypatch.setenv("EMENTA_CONTEXT_BUDGET_TOKENS", "1000")  # no room for prompt and summary
+    with pytest.raises(ValueError, match="context_budget_tokens"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
