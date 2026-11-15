@@ -12,6 +12,8 @@ dependencies = [
     "pypdf>=6.21",
     # DOCX export of the briefs (MIT, typed; brings lxml, BSD)
     "python-docx>=1.2",
+    # front matter of the firm's templates and opinions in data/firm/
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]

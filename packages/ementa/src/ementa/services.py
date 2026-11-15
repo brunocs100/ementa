@@ -8,6 +8,7 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.store.postgres import PostgresStore
 
 from ementa.agents.assistant import AssistantAgent
+from ementa.agents.brief_drafting import BriefDraftingAgent, BriefLibrary
 from ementa.agents.legal_research import LegalResearchAgent
 from ementa.agents.legal_research.graph import CONTEXT_LIMIT
 from ementa.documents import (
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
     from ementa_kit.guardrails.pii import PiiGuard
 
 SKILLS_DIR = Path(__file__).resolve().parents[4] / "skills"
+FIRM_DIR = Path(__file__).resolve().parents[4] / "data" / "firm"
 
 
 @lru_cache
@@ -165,6 +167,20 @@ def assistant_agent() -> AssistantAgent:
         memories=memory_store,
         writer=memory_writer if settings.memory_write_enabled else None,
         context_budget=settings.context_budget_tokens,
+    )
+
+
+@lru_cache
+def brief_drafting_agent() -> BriefDraftingAgent:
+    """The brief drafting agent, with the firm's templates and opinions from `data/firm/`
+    (a malformed file fails here). The research agent and the PII guard load on the first run;
+    a run waiting for the lawyer's approval lives in the checkpointer, across restarts."""
+    return BriefDraftingAgent(
+        model_registry(),
+        legal_research_agent,
+        checkpointer(),
+        _pii_guard,
+        BriefLibrary.from_dir(FIRM_DIR),
     )
 
 

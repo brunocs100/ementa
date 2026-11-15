@@ -340,6 +340,7 @@ dependencies = [
     { name = "presidio-analyzer" },
     { name = "pypdf" },
     { name = "python-docx" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -349,6 +350,7 @@ requires-dist = [
     { name = "presidio-analyzer", specifier = ">=2.2.366" },
     { name = "pypdf", specifier = ">=6.21" },
     { name = "python-docx", specifier = ">=1.2" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]

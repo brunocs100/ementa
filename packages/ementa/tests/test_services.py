@@ -120,6 +120,31 @@ def test_the_assistant_is_built_once_without_loading_the_research_agent(
     assert agent.graph.checkpointer is saver
 
 
+def test_the_brief_agent_is_built_once_without_loading_the_research_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saver = InMemorySaver()
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    monkeypatch.setattr(services, "checkpointer", lambda: saver)
+    monkeypatch.setattr(services, "model_registry", lambda: ModelRegistry(settings))
+
+    def research_agent() -> LegalResearchAgent:
+        raise AssertionError("built on the first run, not with the agent")
+
+    monkeypatch.setattr(services, "legal_research_agent", research_agent)
+    services.brief_drafting_agent.cache_clear()
+    try:
+        agent = services.brief_drafting_agent()
+        assert services.brief_drafting_agent() is agent
+    finally:
+        services.brief_drafting_agent.cache_clear()
+    assert agent.graph.checkpointer is saver
+    assert [t.id for t in agent.library.templates()] == [
+        "initial-petition-credit-listing",
+        "initial-petition-product-defect",
+    ]
+
+
 class RecordingWriter:
     def __init__(self) -> None:
         self.targets: list[list[Namespace]] = []
