@@ -339,6 +339,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "presidio-analyzer" },
     { name = "pypdf" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -347,6 +348,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=1.2" },
     { name = "presidio-analyzer", specifier = ">=2.2.366" },
     { name = "pypdf", specifier = ">=6.21" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]

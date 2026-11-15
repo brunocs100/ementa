@@ -10,6 +10,8 @@ dependencies = [
     "presidio-analyzer>=2.2.366",
     # text of uploaded PDFs (pure Python, BSD); scanned PDFs have no text and are refused
     "pypdf>=6.21",
+    # the contract playbook in data/firm/playbooks (already a dependency of the kit)
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]

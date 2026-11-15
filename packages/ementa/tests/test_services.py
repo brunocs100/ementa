@@ -120,6 +120,36 @@ def test_the_assistant_is_built_once_without_loading_the_research_agent(
     assert agent.graph.checkpointer is saver
 
 
+def test_the_contract_reviewer_is_built_once_and_loads_the_guard_on_the_first_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saver = InMemorySaver()
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    loaded: list[str] = []
+
+    def guard() -> Any:
+        loaded.append("guard")
+        raise AssertionError("not needed to build the agent")
+
+    monkeypatch.setattr(services, "checkpointer", lambda: saver)
+    monkeypatch.setattr(services, "model_registry", lambda: ModelRegistry(settings))
+    monkeypatch.setattr(services, "_pii_guard", guard)
+    services.contract_review_agent.cache_clear()
+    try:
+        agent = services.contract_review_agent()
+        assert services.contract_review_agent() is agent
+        run = agent.review(
+            "# T\n\n## Cláusula 1 - Do foro\n\nForo da Comarca de X.", "t.md", rules_only=True
+        )
+    finally:
+        services.contract_review_agent.cache_clear()
+    assert agent.graph.checkpointer is saver
+    assert agent.playbook.label == "consumer-services@1"
+    assert services.CONTRACT_PLAYBOOK.is_file()
+    assert [r.rule for r in run.report.matrix] == ["foro-de-eleicao"]
+    assert loaded == []  # a rules-only review needs no guard
+
+
 class RecordingWriter:
     def __init__(self) -> None:
         self.targets: list[list[Namespace]] = []
