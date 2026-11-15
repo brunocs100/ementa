@@ -52,7 +52,7 @@ uvx pre-commit install                           # uma vez por clone: ruff e hig
 uv run ementa seed-users                         # seis usuários fictícios em firm.users (senhas na doc de segurança)
 uv run ementa audit verify                       # confere a cadeia de hash de audit.events
 docker compose --profile core up -d redis        # fila do worker, em 127.0.0.1:6379
-uv run ementa-worker                             # worker arq: ingestão dos documentos de POST /v1/documents
+uv run ementa-worker                             # worker arq: ingestão de POST /v1/documents e as execuções de redação (F4)
 uv run ementa-worker --burst                     # roda a fila até esvaziar e sai
 # Integração da fila e do worker: EMENTA_TEST_REDIS_URL=redis://127.0.0.1:6379/0, junto com EMENTA_TEST_DATABASE_URL
 ```
@@ -100,7 +100,7 @@ A avaliação das 30 perguntas roda no GitHub Actions (`evals.yml`) com o rótul
 
 - **Ferramenta MCP:** schema em `packages/ementa/src/ementa/tools/`, registro no `apps/mcp_server`, classe de dado, testes e linha no catálogo de `docs/AGENTES.md`.
 - **Skill:** pasta em `skills/<nome>/` com `SKILL.md` (nome, descrição, instruções); scripts só da lista permitida; caso de avaliação.
-- **Agente:** módulo em `packages/ementa/src/ementa/agents/<id>/`, montado pelo `AgentFactory`, com grafo, estado tipado, testes com modelo falso e seção em `docs/AGENTES.md`.
+- **Agente:** módulo em `packages/ementa/src/ementa/agents/<id>/`, montado pelo `AgentFactory`, com grafo, estado tipado, testes com modelo falso e seção em `docs/AGENTES.md`. Agente que redige para aprovação chama `ask_for_approval` antes de finalizar, cumpre o protocolo `DraftingAgent` e entra em `services.drafting_agents()` (ver "Agentes de redação com aprovação" em `docs/AGENTES.md`).
 - **Caso de avaliação:** linha no JSONL de `evals/`, com id, pergunta, citações esperadas e trechos obrigatórios.
 
 ## Definição de pronto
