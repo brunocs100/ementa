@@ -2,9 +2,19 @@ from pathlib import Path
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from ementa_kit.config import Settings
-from ementa_kit.context import Conversation, Section, build_user_turn
+from ementa_kit.context import (
+    SIZES_EVENT,
+    Conversation,
+    Section,
+    approx_tokens,
+    build_context,
+    build_user_turn,
+)
 from ementa_kit.llm import ModelRegistry, ModelRole, ModelUnavailableError
 from ementa_kit.prompts import PromptRegistry, load_prompt
 
@@ -13,6 +23,30 @@ def test_user_turn_puts_sections_first_and_question_last() -> None:
     turn = build_user_turn([Section("fontes", "[x:art1] texto")], "E agora?")
 
     assert turn.text == "<fontes>\n[x:art1] texto\n</fontes>\n\n<pergunta>\nE agora?\n</pergunta>"
+
+
+def test_build_context_records_the_size_of_each_part_on_the_current_span() -> None:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    sections = [Section("fontes", "[x:art1] texto")]
+
+    with provider.get_tracer("test").start_as_current_span("invoke_agent"):
+        messages = build_context("regras", sections, "E agora?")
+
+    assert messages == [SystemMessage("regras"), build_user_turn(sections, "E agora?")]
+    [span] = exporter.get_finished_spans()
+    [event] = span.events
+    assert event.name == SIZES_EVENT == "ementa.context.section_tokens"
+    assert dict(event.attributes or {}) == {
+        "system.chars": 6,
+        "system.tokens": 2,
+        "fontes.chars": 33,  # "<fontes>\n[x:art1] texto\n</fontes>", what the model sees
+        "fontes.tokens": 9,
+        "pergunta.chars": 31,
+        "pergunta.tokens": 8,
+    }
+    assert [approx_tokens(t) for t in ("", "abcd", "abcde")] == [0, 1, 2]
 
 
 def test_conversation_only_grows() -> None:

@@ -6,14 +6,18 @@ import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatResult
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic import Field
 
-from ementa.agents.legal_research import LegalResearchAgent
+from ementa.agents.legal_research import LegalResearchAgent, graph
 from ementa.agents.legal_research.graph import NO_BASIS, explicit_ids, render_source
 from ementa.ingest.corpus import load_statute
 from ementa.ingest.index import statute_chunks
 from ementa.knowledge import article_of
 from ementa_kit.config import Settings
+from ementa_kit.context import approx_tokens
 from ementa_kit.llm import ModelRegistry, ModelRole, ModelSpec
 from ementa_kit.rag import Hit
 
@@ -99,6 +103,28 @@ def test_bad_citation_triggers_one_retry_appending_to_the_conversation() -> None
     assert second[: len(first)] == first  # nothing the model saw was edited
     assert len(second) == len(first) + 2  # its own reply, then the verifier's feedback
     assert "stj:sumula:385: fonte fora do contexto recuperado" in second[-1].text
+
+
+def test_context_size_of_each_section_goes_to_the_agent_span(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(graph, "tracer", provider.get_tracer("test"))
+    research, chats = make_agent(FakeRetriever(["cdc:art49", "cdc:art35"]), [GOOD])
+
+    research.ask(QUESTION)
+
+    [span] = [s for s in exporter.get_finished_spans() if s.name == "invoke_agent legal_research"]
+    [event] = [e for e in span.events if e.name == "ementa.context.section_tokens"]
+    sizes = {k: v for k, v in (event.attributes or {}).items() if isinstance(v, int)}
+    system, turn = chats[ModelRole.DEFAULT].calls[0]
+    assert len(sizes) == len(event.attributes or {}) == 6  # chars and tokens of 3 parts
+    assert sizes["system.chars"] == len(system.text)
+    assert sizes["system.tokens"] == approx_tokens(system.text)
+    assert sizes["fontes.chars"] + len("\n\n") + sizes["pergunta.chars"] == len(turn.text)
+    assert sizes["fontes.tokens"] > sizes["pergunta.tokens"] > 0
 
 
 def test_answer_without_valid_citation_falls_back_after_the_retry() -> None:
