@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Legal domain for the Ementa agents"
 requires-python = ">=3.12,<3.13"
 license = "MIT"
-dependencies = ["ementa-kit"]
+dependencies = ["ementa-kit", "langgraph>=1.2"]
+
+[project.scripts]
+ementa = "ementa.cli:main"
 
 [tool.uv.sources]
 ementa-kit = { workspace = true }

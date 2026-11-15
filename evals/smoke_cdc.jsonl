@@ -1,0 +1,10 @@
+{"id": "cdc-01", "question": "Comprei pela internet e me arrependi. Tenho quanto tempo para desistir?", "expected": ["cdc:art49"]}
+{"id": "cdc-02", "question": "Qual o prazo para reclamar de defeito aparente em produto durável, como uma geladeira?", "expected": ["cdc:art26"]}
+{"id": "cdc-03", "question": "Paguei uma cobrança indevida. Tenho direito a receber de volta em dobro?", "expected": ["cdc:art42"]}
+{"id": "cdc-04", "question": "O fornecedor tem quanto tempo para consertar um produto com vício antes de eu poder pedir a troca?", "expected": ["cdc:art18"]}
+{"id": "cdc-05", "question": "Por quanto tempo meu nome pode ficar negativado em cadastro de inadimplentes?", "expected": ["cdc:art43"]}
+{"id": "cdc-06", "question": "A loja pode condicionar a venda de um produto à compra de outro?", "expected": ["cdc:art39"]}
+{"id": "cdc-07", "question": "Qual o prazo para pedir indenização por acidente causado por defeito de um produto?", "expected": ["cdc:art27"]}
+{"id": "cdc-08", "question": "Uma cláusula de contrato que me coloca em desvantagem exagerada vale?", "expected": ["cdc:art51"]}
+{"id": "cdc-09", "question": "Quem responde pelos danos causados por um produto com defeito de fabricação?", "expected": ["cdc:art12"]}
+{"id": "cdc-10", "question": "O que a lei considera publicidade enganosa?", "expected": ["cdc:art37"]}

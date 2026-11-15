@@ -18,6 +18,7 @@ ementa-mcp = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.140",
     "mypy>=1.18",
     "pytest>=8.4",
     "ruff>=0.14",
@@ -29,6 +30,10 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Statute parsers match the en dash that the official texts use.
+"packages/ementa/src/ementa/ingest/*.py" = ["RUF001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["ementa", "ementa_kit", "ementa_mcp"]

@@ -2,3 +2,4 @@
 *.png binary
 *.jpg binary
 *.gguf binary
+data/corpus/raw/**/*.htm binary

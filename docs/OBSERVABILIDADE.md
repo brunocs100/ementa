@@ -40,7 +40,7 @@ Atributos próprios do projeto:
 | `ementa.context.section_tokens` | evento com mapa | `{"system": 900, "sources": 3100, "question": 120}` |
 | `ementa.case.pseudo_id` | string | Hash do id do processo, nunca o número real |
 
-As chamadas à OpenAI usam a instrumentação oficial (`opentelemetry-instrumentation-openai-v2`; suporte à Responses API conferir na F1). FastAPI, httpx e psycopg entram com instrumentação automática.
+As chamadas à OpenAI usam a instrumentação oficial (`opentelemetry-instrumentation-openai-v2` 2.4b0, que cobre Chat Completions e embeddings; a Responses API não é coberta, por isso a F1 usa Chat Completions). FastAPI, httpx e psycopg entram com instrumentação automática.
 
 ## Cascata de um trace da pesquisa
 

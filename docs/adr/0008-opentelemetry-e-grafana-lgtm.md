@@ -25,7 +25,7 @@ Na máquina de dev, com 15 GB de RAM, a stack precisa ser leve.
 
 **Instrumentação pronta:**
 
-- chamadas à OpenAI pela `opentelemetry-instrumentation-openai-v2` (suporte à Responses API a conferir na F1);
+- chamadas à OpenAI pela `opentelemetry-instrumentation-openai-v2` (conferido na F1: a 2.4b0 cobre Chat Completions e embeddings, não a Responses API; ver [ADR 0005](0005-camada-de-modelos-agnostica.md));
 - FastAPI, httpx e psycopg pelas instrumentações automáticas.
 
 **Logs** em JSON com structlog, correlacionados por `trace_id`.

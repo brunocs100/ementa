@@ -19,7 +19,7 @@ O volume é pequeno: alguns milhares de chunks no Marco 1, dezenas de milhares n
 
 - **Postgres 17 com pgvector** como base de conhecimento, no schema `knowledge`.
 - Índice **HNSW** na coluna `embedding`.
-- **Busca textual (FTS) em português sem acento**: uma configuração de busca própria, copiada da `portuguese` e mapeada com o dicionário `unaccent`, aplicada numa coluna `tsv` gerada, com índice GIN.
+- **Busca textual (FTS) em português sem acento**: a configuração `portuguese`, aplicada numa coluna `tsv` gerada a partir de uma coluna de texto já sem acento, com índice GIN. Atualização da F1: o acento sai no Python (`ementa_kit.rag.fold`), no documento e na consulta, em vez do dicionário `unaccent`. Assim a busca roda em qualquer Postgres com pgvector, com ou sem a extensão.
 - **Busca híbrida em SQL**: os 30 melhores de cada lado (vetorial e textual), fundidos por RRF (Reciprocal Rank Fusion, a soma de 1/(k + posição), com k = 60).
 - **RLS** (Row Level Security) em `knowledge.chunks`. A política libera o trecho público (`case_id IS NULL`) e o trecho de processo só para quem está em `case_members`, a partir de `current_setting('app.user_id')`. O sigilo não entra na policy de leitura: é tratado pelo roteamento de modelo (ADR 0005). Assim o banco devolve só o que o usuário pode ver, qualquer que seja a consulta.
 - O kit acessa a base pela porta `VectorStore`; o adaptador pgvector é a implementação padrão.
@@ -44,7 +44,7 @@ O volume é pequeno: alguns milhares de chunks no Marco 1, dezenas de milhares n
 
 - O HNSW tem parâmetros (`m`, `ef_construction`, `ef_search`) que precisam de ajuste medido.
 - O índice vetorial e o RLS juntos podem piorar o plano de execução. Mitigação: medir com `EXPLAIN ANALYZE` na F2.
-- A busca textual depende da configuração com `unaccent`. Se ela não for usada na consulta e no índice, o índice não serve.
+- A busca textual depende de a consulta passar pelo mesmo `fold` do documento. Se não passar, palavra com acento não casa.
 
 ## Como validar
 
