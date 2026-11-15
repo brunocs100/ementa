@@ -342,6 +342,8 @@ dependencies = [
     { name = "ementa-kit" },
     { name = "fastapi" },
     { name = "opentelemetry-instrumentation-fastapi" },
+    { name = "pyjwt" },
+    { name = "python-multipart" },
     { name = "uvicorn" },
 ]
 
@@ -351,6 +353,8 @@ requires-dist = [
     { name = "ementa-kit", editable = "packages/ementa-kit" },
     { name = "fastapi", specifier = ">=0.163" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.66b2" },
+    { name = "pyjwt", specifier = ">=2.15" },
+    { name = "python-multipart", specifier = ">=0.0.33" },
     { name = "uvicorn", specifier = ">=0.54" },
 ]
 

@@ -11,6 +11,8 @@ from ementa.agents.legal_research.graph import CONTEXT_LIMIT
 from ementa.knowledge import KnowledgeBase
 from ementa.memory import EXTRACT_PROMPT, subject_key
 from ementa.prompts import get_prompt
+from ementa.users import UserDirectory
+from ementa_kit.audit import PgAuditLog
 from ementa_kit.config import get_settings
 from ementa_kit.llm import ModelRegistry
 from ementa_kit.memory import MemoryWriter, open_postgres_store
@@ -66,6 +68,22 @@ def skill_library() -> SkillLibrary:
         allowed_scripts=settings.skill_scripts_allowed,
         script_timeout_s=settings.skill_script_timeout_s,
     )
+
+
+@lru_cache
+def audit_log() -> PgAuditLog:
+    """The firm's audit trail, `audit.events`; table and trigger are created on first use."""
+    log = PgAuditLog(get_settings().database_url, schema="audit")
+    log.ensure_schema()
+    return log
+
+
+@lru_cache
+def user_directory() -> UserDirectory:
+    """The firm's users, in `firm.users`; the schema is created on first use."""
+    directory = UserDirectory(get_settings().database_url)
+    directory.ensure_schema()
+    return directory
 
 
 @lru_cache

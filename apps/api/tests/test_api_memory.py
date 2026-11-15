@@ -1,4 +1,4 @@
-"""`DELETE /v1/data-subjects/{id}/memories`: LGPD forgetting, for the DPO and the sócia only.
+"""`DELETE /v1/data-subjects/{id}/memories`: LGPD forgetting, for the DPO and TI only.
 
 Every name and CPF here is fictitious.
 """
@@ -40,8 +40,8 @@ def left(store: InMemoryStore) -> list[str]:
     return sorted(item.key for item in store.search((), limit=100))
 
 
-@pytest.mark.parametrize("role", [Role.DPO, Role.SOCIA])
-def test_the_dpo_or_the_socia_forgets_a_data_subject(role: Role) -> None:
+@pytest.mark.parametrize("role", [Role.DPO, Role.TI])
+def test_the_dpo_or_ti_forgets_a_data_subject(role: Role) -> None:
     store = store_with_memories()
     api = client(store, role)
 
@@ -53,7 +53,7 @@ def test_the_dpo_or_the_socia_forgets_a_data_subject(role: Role) -> None:
     assert api.delete(f"/v1/data-subjects/{MARIA}/memories").json() == {"removed": 0}
 
 
-@pytest.mark.parametrize("role", [Role.ASSOCIADO, Role.ESTAGIARIO, Role.CONTROLADORIA, Role.TI])
+@pytest.mark.parametrize("role", [Role.SOCIA, Role.ASSOCIADO, Role.ESTAGIARIO, Role.CONTROLADORIA])
 def test_other_roles_may_not_forget(role: Role) -> None:
     store = store_with_memories()
 

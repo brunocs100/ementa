@@ -5,6 +5,7 @@ personal data, and error bodies end up in logs. For the same reason `instance` i
 the matched route, not the path as sent, which could hold a CPF typed in by mistake.
 """
 
+from collections.abc import Mapping
 from http import HTTPStatus
 from typing import Any
 
@@ -34,11 +35,12 @@ class Problem(BaseModel):
     errors: list[FieldError] | None = None
 
 
-def problem_response(problem: Problem) -> JSONResponse:
+def problem_response(problem: Problem, headers: Mapping[str, str] | None = None) -> JSONResponse:
     return JSONResponse(
         problem.model_dump(exclude_none=True),
         status_code=problem.status,
         media_type=PROBLEM_JSON,
+        headers=headers,
     )
 
 
@@ -97,7 +99,8 @@ async def _http(request: Request, exc: Exception) -> JSONResponse:
             status=exc.status_code,
             detail=detail,
             instance=_instance(request),
-        )
+        ),
+        headers=exc.headers,  # WWW-Authenticate on 401, Allow on 405
     )
 
 

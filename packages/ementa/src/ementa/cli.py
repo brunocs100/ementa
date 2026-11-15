@@ -1,4 +1,5 @@
-"""`uv run ementa`: corpus ingestion, search and the legal research agent from the terminal."""
+"""`uv run ementa`: corpus ingestion, search, the legal research agent, the demo users and the
+audit trail."""
 
 import argparse
 import io
@@ -200,6 +201,39 @@ def _smoke_markdown(summary: dict[str, Any], rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _seed_users(args: argparse.Namespace, settings: Settings) -> int:
+    """The six fictitious users, one per role. Their passwords are public, so never in prod."""
+    if settings.is_prod:
+        print("seed-users writes public demo passwords; it does not run in prod.", file=sys.stderr)
+        return 2
+    from ementa.services import user_directory
+    from ementa.users import seed_demo_users
+
+    users = seed_demo_users(user_directory())
+    for user in users:
+        print(f"{user.username:<14} {user.role.value:<14} {user.name}")
+    print(
+        f"{len(users)} fictitious users in firm.users; passwords in docs/SEGURANCA-E-GOVERNANCA.md"
+    )
+    return 0
+
+
+def _audit(args: argparse.Namespace, settings: Settings) -> int:
+    """`audit verify`: exit 0 when the chain is intact, 1 at the first broken link."""
+    from ementa.services import audit_log
+
+    check = audit_log().verify()
+    if check.broken is None:
+        head = check.head.hex() if check.head else "none"
+        print(f"audit.events: {check.checked} events, chain intact; head {head}")
+        return 0
+    print(
+        f"audit.events: chain broken at event {check.broken.id}: {check.broken.reason} "
+        f"({check.checked} events before it verified)"
+    )
+    return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ementa")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -229,12 +263,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     smoke.add_argument("--report", type=Path, help="write the rows and the summary as JSON")
     smoke.add_argument("--markdown", type=Path, help="write a Markdown table for a PR comment")
 
+    sub.add_parser("seed-users", help="write the six fictitious demo users into firm.users")
+
+    audit = sub.add_parser("audit", help="the audit trail in audit.events")
+    audit_commands = audit.add_subparsers(dest="audit_command", required=True)
+    audit_commands.add_parser("verify", help="check the hash chain; report the first broken link")
+
     args = parser.parse_args(argv)
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(encoding="utf-8")
     settings = get_settings()
     setup(settings)
-    handlers = {"ingest": _ingest, "search": _search, "ask": _ask, "smoke": _smoke}
+    handlers = {
+        "ingest": _ingest,
+        "search": _search,
+        "ask": _ask,
+        "smoke": _smoke,
+        "seed-users": _seed_users,
+        "audit": _audit,
+    }
     return handlers[args.command](args, settings)
 
 

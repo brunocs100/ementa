@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     # Key of the HMAC that turns a CPF, a name or an e-mail into the data subject id tagging
     # memories (LGPD forgetting). Required in prod; changing it orphans the ids already stored.
     data_subject_key: SecretStr | None = None
+    # Signs the REST API tokens (HS256). Outside dev and ci the API does not start without it;
+    # in dev and ci each process draws a random one, so tokens die with the process.
+    jwt_secret: SecretStr | None = Field(default=None, min_length=32)
+    jwt_ttl_minutes: int = Field(default=15, ge=1, le=60)
 
     openai_api_key: SecretStr | None = Field(
         default=None,
