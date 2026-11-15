@@ -4,7 +4,13 @@ version = "0.1.0"
 description = "Legal domain for the Ementa agents"
 requires-python = ">=3.12,<3.13"
 license = "MIT"
-dependencies = ["ementa-kit", "langgraph>=1.2", "presidio-analyzer>=2.2.366"]
+dependencies = [
+    "ementa-kit",
+    "langgraph>=1.2",
+    "presidio-analyzer>=2.2.366",
+    # text of uploaded PDFs (pure Python, BSD); scanned PDFs have no text and are refused
+    "pypdf>=6.21",
+]
 
 [project.scripts]
 ementa = "ementa.cli:main"

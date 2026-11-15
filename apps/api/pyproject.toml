@@ -9,6 +9,8 @@ dependencies = [
     "ementa-kit",
     "fastapi>=0.163",
     "opentelemetry-instrumentation-fastapi>=0.66b2",
+    # multipart form parsing behind FastAPI's UploadFile (POST /v1/documents)
+    "python-multipart>=0.0.30",
     "uvicorn>=0.54",
 ]
 

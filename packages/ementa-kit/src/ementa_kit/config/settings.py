@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     log_json: bool = True
 
     database_url: str = "postgresql://ementa:ementa@localhost:5432/ementa"
+    # Job queue (arq) that `ementa-worker` reads. 127.0.0.1, not localhost: Redis listens on
+    # IPv4 only, and Windows tries ::1 first, which outlasts the 1 s connect timeout.
+    redis_url: str = "redis://127.0.0.1:6379/0"
 
     otel_enabled: bool = True
     otel_endpoint: str = "http://localhost:4318"

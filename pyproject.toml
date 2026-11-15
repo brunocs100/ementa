@@ -3,7 +3,7 @@ name = "ementa-workspace"
 version = "0.0.0"
 description = "Workspace root for the Ementa monorepo"
 requires-python = ">=3.12,<3.13"
-dependencies = ["ementa-kit", "ementa", "ementa-mcp", "ementa-api"]
+dependencies = ["ementa-kit", "ementa", "ementa-mcp", "ementa-api", "ementa-worker"]
 
 [tool.uv]
 package = false
@@ -16,6 +16,7 @@ ementa-kit = { workspace = true }
 ementa = { workspace = true }
 ementa-mcp = { workspace = true }
 ementa-api = { workspace = true }
+ementa-worker = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -40,7 +41,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 "packages/ementa/src/ementa/ingest/*.py" = ["RUF001"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["ementa", "ementa_api", "ementa_kit", "ementa_mcp"]
+known-first-party = ["ementa", "ementa_api", "ementa_kit", "ementa_mcp", "ementa_worker"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -55,14 +56,14 @@ markers = [
 ]
 
 [tool.importlinter]
-root_packages = ["ementa_kit", "ementa", "ementa_mcp", "ementa_api"]
+root_packages = ["ementa_kit", "ementa", "ementa_mcp", "ementa_api", "ementa_worker"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "The kit does not depend on the legal domain or on the apps"
 type = "forbidden"
 source_modules = ["ementa_kit"]
-forbidden_modules = ["ementa", "ementa_mcp", "ementa_api"]
+forbidden_modules = ["ementa", "ementa_mcp", "ementa_api", "ementa_worker"]
 
 [[tool.importlinter.contracts]]
 name = "Domain rules are pure: no infrastructure, models or frameworks"
@@ -75,6 +76,7 @@ forbidden_modules = [
     "ementa.knowledge",
     "ementa.services",
     "ementa.tools",
+    "arq",
     "fastapi",
     "langchain_core",
     "langchain_openai",
@@ -82,9 +84,10 @@ forbidden_modules = [
     "mcp",
     "openai",
     "psycopg",
+    "redis",
 ]
 
 [[tool.importlinter.contracts]]
 name = "Apps do not import each other"
 type = "independence"
-modules = ["ementa_mcp", "ementa_api"]
+modules = ["ementa_mcp", "ementa_api", "ementa_worker"]

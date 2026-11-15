@@ -15,6 +15,7 @@ from ementa.tools.research import (
     AnswerLegalQuestionInput,
     AnswerLegalQuestionOutput,
 )
+from ementa_api.documents import Intake, documents_router
 from ementa_api.problems import (
     Problem,
     install_problem_handlers,
@@ -47,6 +48,7 @@ def corpus_chunks() -> int:
 def create_app(
     researcher: Callable[[], Researcher] = services.private_legal_research,
     chunks: Callable[[], int] = corpus_chunks,
+    documents: Callable[[], Intake] = services.document_intake,
 ) -> FastAPI:
     app = FastAPI(
         title="Ementa API",
@@ -65,6 +67,8 @@ def create_app(
     )
     def legal_research(body: AnswerLegalQuestionInput) -> AnswerLegalQuestionOutput:
         return AnswerLegalQuestionOutput.from_answer(researcher().ask(body.question))
+
+    app.include_router(documents_router(documents))
 
     @app.get("/healthz", response_model=Health, tags=["ops"], summary="O processo está de pé")
     def healthz() -> Health:
