@@ -152,6 +152,101 @@
         ]
       }
     },
+    "/v1/audit/events": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "Trilha de auditoria, do evento mais novo ao mais antigo",
+        "description": "Eventos de `audit.events`, do mais novo ao mais antigo: quem chamou, que rota, status e duração, com o hash encadeado de cada um. Nunca o corpo do pedido. Para a próxima página, mande o `next_cursor` recebido em `cursor`. Só sócia, DPO e TI; a conferência da cadeia é `uv run ementa audit verify`.",
+        "operationId": "audit_events_v1_audit_events_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]{0,17}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "O `next_cursor` da página anterior",
+              "title": "Cursor"
+            },
+            "description": "O `next_cursor` da página anterior"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Eventos por página",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Eventos por página"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -308,6 +403,108 @@
           "model"
         ],
         "title": "AnswerLegalQuestionOutput"
+      },
+      "AuditEventOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "resource": {
+            "type": "string",
+            "title": "Resource"
+          },
+          "data_class": {
+            "type": "string",
+            "title": "Data Class"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details"
+          },
+          "prev_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prev Hash"
+          },
+          "hash": {
+            "type": "string",
+            "title": "Hash"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "occurred_at",
+          "actor",
+          "action",
+          "resource",
+          "data_class",
+          "outcome",
+          "details",
+          "prev_hash",
+          "hash"
+        ],
+        "title": "AuditEventOut"
+      },
+      "AuditPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AuditPage"
       },
       "Body_issue_token_v1_auth_token_post": {
         "properties": {

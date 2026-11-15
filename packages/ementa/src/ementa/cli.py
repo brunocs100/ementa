@@ -1,4 +1,5 @@
-"""`uv run ementa`: corpus ingestion, search, the legal research agent and the demo users."""
+"""`uv run ementa`: corpus ingestion, search, the legal research agent, the demo users and the
+audit trail."""
 
 import argparse
 import io
@@ -217,6 +218,22 @@ def _seed_users(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def _audit(args: argparse.Namespace, settings: Settings) -> int:
+    """`audit verify`: exit 0 when the chain is intact, 1 at the first broken link."""
+    from ementa.services import audit_log
+
+    check = audit_log().verify()
+    if check.broken is None:
+        head = check.head.hex() if check.head else "none"
+        print(f"audit.events: {check.checked} events, chain intact; head {head}")
+        return 0
+    print(
+        f"audit.events: chain broken at event {check.broken.id}: {check.broken.reason} "
+        f"({check.checked} events before it verified)"
+    )
+    return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ementa")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -248,6 +265,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     sub.add_parser("seed-users", help="write the six fictitious demo users into firm.users")
 
+    audit = sub.add_parser("audit", help="the audit trail in audit.events")
+    audit_commands = audit.add_subparsers(dest="audit_command", required=True)
+    audit_commands.add_parser("verify", help="check the hash chain; report the first broken link")
+
     args = parser.parse_args(argv)
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -259,6 +280,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "ask": _ask,
         "smoke": _smoke,
         "seed-users": _seed_users,
+        "audit": _audit,
     }
     return handlers[args.command](args, settings)
 

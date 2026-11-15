@@ -225,6 +225,7 @@ def test_every_v1_route_needs_a_token_and_has_a_line_in_the_matrix() -> None:
     or `require_roles`) and the matrix in `ementa.domain.access` grants it to someone."""
     granted = set().union(*(grants.routes for grants in PERMISSIONS.values()))
     routes = [r for r in build().routes if isinstance(r, APIRoute) and r.path.startswith("/v1/")]
+    served = {f"{method} {r.path}" for r in routes for method in r.methods or ()}
 
     for route in routes:
         for method in route.methods or ():
@@ -233,6 +234,7 @@ def test_every_v1_route_needs_a_token_and_has_a_line_in_the_matrix() -> None:
                 continue
             assert depends_on(route.dependant, current_user), f"{key} answers without a token"
             assert key in granted, f"{key} has no line in the permission matrix"
+    assert granted <= served, f"the matrix grants routes the API lacks: {granted - served}"
 
 
 def test_the_api_does_not_start_in_prod_without_a_jwt_secret(

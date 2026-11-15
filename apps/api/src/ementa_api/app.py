@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Annotated, Protocol
 
 import psycopg
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
@@ -17,6 +17,7 @@ from ementa.tools.research import (
     AnswerLegalQuestionOutput,
 )
 from ementa.users import FirmUser
+from ementa_api.audit import AUDIT_DESCRIPTION, AuditEventOut, AuditMiddleware, AuditPage
 from ementa_api.auth import (
     TOKEN_URL,
     User,
@@ -31,6 +32,7 @@ from ementa_api.problems import (
     problem_response,
     problem_responses,
 )
+from ementa_kit.audit import AuditLog
 from ementa_kit.config import get_settings
 
 
@@ -72,10 +74,17 @@ def corpus_chunks() -> int:
     return int(row[0]) if row else 0
 
 
+def firm_audit_log() -> AuditLog:
+    """`services.audit_log`, looked up on every call: the API tests swap it for a list, so they
+    never write to an append-only table that cannot be cleaned up."""
+    return services.audit_log()
+
+
 def create_app(
     researcher: Callable[[], Researcher] = services.private_legal_research,
     chunks: Callable[[], int] = corpus_chunks,
     users: Callable[[], Authenticator] = services.user_directory,
+    audit: Callable[[], AuditLog] = firm_audit_log,
 ) -> FastAPI:
     check_jwt_settings(get_settings())  # fails here, at startup, in prod without a secret
     app = FastAPI(
@@ -84,6 +93,7 @@ def create_app(
         description="Agentes de IA para advocacia. Saídas são rascunho para o advogado conferir.",
     )
     install_problem_handlers(app)
+    app.add_middleware(AuditMiddleware, audit=audit)
 
     @app.post(
         TOKEN_URL,
@@ -102,6 +112,7 @@ def create_app(
         if found is None:
             raise unauthorized("Wrong username or password.")
         user = User(id=found.id, name=found.name, role=found.role)
+        request.state.user = user  # the audit event of this login names who logged in
         response.headers["Cache-Control"] = "no-store"  # RFC 6749: tokens are not cached
         return AccessToken(
             access_token=create_access_token(user),
@@ -119,6 +130,30 @@ def create_app(
     )
     def legal_research(body: AnswerLegalQuestionInput) -> AnswerLegalQuestionOutput:
         return AnswerLegalQuestionOutput.from_answer(researcher().ask(body.question))
+
+    @app.get(
+        "/v1/audit/events",
+        response_model=AuditPage,
+        responses=problem_responses(401, 403, 422),
+        dependencies=[Depends(authorized_user)],
+        summary="Trilha de auditoria, do evento mais novo ao mais antigo",
+        description=AUDIT_DESCRIPTION,
+        tags=["audit"],
+    )
+    def audit_events(
+        cursor: Annotated[
+            str | None,
+            Query(pattern=r"^[1-9][0-9]{0,17}$", description="O `next_cursor` da página anterior"),
+        ] = None,
+        limit: Annotated[int, Query(ge=1, le=200, description="Eventos por página")] = 50,
+    ) -> AuditPage:
+        records = audit().page(before=int(cursor) if cursor else None, limit=limit + 1)
+        items = records[:limit]
+        more = len(records) > limit
+        return AuditPage(
+            items=[AuditEventOut.from_record(r) for r in items],
+            next_cursor=str(items[-1].id) if more else None,
+        )
 
     @app.get("/healthz", response_model=Health, tags=["ops"], summary="O processo está de pé")
     def healthz() -> Health:
