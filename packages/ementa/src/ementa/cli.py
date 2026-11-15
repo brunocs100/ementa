@@ -7,11 +7,15 @@ import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from ementa.ingest.corpus import SOURCE_IDS
 from ementa_kit.config import Settings, get_settings
 from ementa_kit.rag import FastEmbedder, PgHybridStore
 from ementa_kit.telemetry import setup
+
+if TYPE_CHECKING:
+    from ementa_kit.telemetry import CostMeter
 
 
 def _store(settings: Settings, embedder: FastEmbedder) -> PgHybridStore:
@@ -60,16 +64,36 @@ def _ask(args: argparse.Namespace, settings: Settings) -> int:
 SMOKE_FILE = Path(__file__).resolve().parents[4] / "evals" / "smoke_cdc.jsonl"
 
 
+STOPPED_AT_BUDGET = 2
+
+
 def _smoke(args: argparse.Namespace, settings: Settings) -> int:
-    """Smoke questions: expected source in the top 5 and, with the agent, in the citations."""
+    """Golden questions: expected source in the top 5 and, with the agent, in the citations.
+
+    Exit 0 when recall@5 reaches `--min-recall` (default: every question), 1 when it does not,
+    2 when the run stopped at `--max-cost-usd` before the last question.
+    """
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+
     from ementa.knowledge import article_of
     from ementa.services import knowledge_base, legal_research_agent
+    from ementa_kit.telemetry import CostMeter
+
+    meter = CostMeter()
+    provider = trace.get_tracer_provider()
+    if isinstance(provider, TracerProvider):
+        provider.add_span_processor(meter)
 
     cases = [
         json.loads(line) for line in args.file.read_text(encoding="utf-8").splitlines() if line
     ]
-    rows = []
+    rows: list[dict[str, Any]] = []
+    stopped = False
     for case in cases:
+        if args.max_cost_usd is not None and meter.total_usd >= args.max_cost_usd:
+            stopped = True
+            break
         started = time.perf_counter()
         expected = set(case["expected"])
         if args.retrieval_only:
@@ -94,19 +118,86 @@ def _smoke(args: argparse.Namespace, settings: Settings) -> int:
         }
         rows.append(row)
         print(json.dumps(row, ensure_ascii=False))
-    top5 = sum(r["top5"] for r in rows)
-    mrr = sum(1 / r["rank"] for r in rows if r["rank"]) / len(rows)
+
+    summary = _smoke_summary(rows, len(cases), args.retrieval_only, settings, meter, stopped)
+    print(summary["line"])
+    if args.report:
+        report = {"file": str(args.file), "summary": summary, "rows": rows}
+        args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    if args.markdown:
+        args.markdown.write_text(_smoke_markdown(summary, rows), encoding="utf-8")
+    if stopped:
+        return STOPPED_AT_BUDGET
+    target = args.min_recall if args.min_recall is not None else 1.0
+    return 0 if summary["recall_at_5"] >= target else 1
+
+
+def _smoke_summary(
+    rows: list[dict[str, Any]],
+    planned: int,
+    retrieval_only: bool,
+    settings: Settings,
+    meter: "CostMeter",
+    stopped: bool,
+) -> dict[str, Any]:
+    n = len(rows) or 1
     top1 = sum(r["rank"] == 1 for r in rows)
-    summary = (
-        f"top1 {top1}/{len(rows)}, top5 {top5}/{len(rows)} (recall@5 {top5 / len(rows):.2f}), "
-        f"MRR@5 {mrr:.2f}"
+    top5 = sum(r["top5"] for r in rows)
+    mrr = sum(1 / r["rank"] for r in rows if r["rank"]) / n
+    summary: dict[str, Any] = {
+        "mode": "retrieval" if retrieval_only else "agent",
+        "questions": len(rows),
+        "planned": planned,
+        "top1": top1,
+        "top5": top5,
+        "recall_at_5": round(top5 / n, 3),
+        "mrr_at_5": round(mrr, 3),
+        "cost_usd": round(meter.total_usd, 4),
+        "model_calls": meter.calls,
+        "unpriced_models": sorted(meter.unpriced),
+        "stopped_at_budget": stopped,
+        "embedding_model": settings.embedding_model,
+        "rerank": settings.rerank_model if settings.rerank_enabled else "off",
+    }
+    line = (
+        f"top1 {top1}/{len(rows)}, top5 {top5}/{len(rows)} (recall@5 {summary['recall_at_5']:.2f}),"
+        f" MRR@5 {summary['mrr_at_5']:.2f}"
     )
-    if not args.retrieval_only:
-        summary += f", citada {sum(r['cited'] for r in rows)}/{len(rows)}"
-        summary += f", removidas {sum(r['removed'] for r in rows)}"
-    rerank = settings.rerank_model if settings.rerank_enabled else "off"
-    print(f"{summary} ({settings.embedding_model}, rerank {rerank})")
-    return 0 if top5 == len(rows) else 1
+    if not retrieval_only:
+        summary["cited"] = sum(r["cited"] for r in rows)
+        summary["removed"] = sum(r["removed"] for r in rows)
+        line += f", citada {summary['cited']}/{len(rows)}, removidas {summary['removed']}"
+        line += f", US$ {meter.total_usd:.4f} em {meter.calls} chamadas"
+    if stopped:
+        line += f"; parou no teto de custo depois de {len(rows)} de {planned} perguntas"
+    summary["line"] = f"{line} ({settings.embedding_model}, rerank {summary['rerank']})"
+    return summary
+
+
+def _smoke_markdown(summary: dict[str, Any], rows: list[dict[str, Any]]) -> str:
+    title = "Busca (sem modelo)" if summary["mode"] == "retrieval" else "Agente (modelo real)"
+    lines = [
+        f"### {title}",
+        "",
+        "| Perguntas | Top 1 | Top 5 (recall@5) | MRR@5 | Citada | Removidas | Custo |",
+        "|---|---|---|---|---|---|---|",
+        f"| {summary['questions']} de {summary['planned']} | {summary['top1']} "
+        f"| {summary['top5']} ({summary['recall_at_5']:.2f}) | {summary['mrr_at_5']:.2f} "
+        f"| {summary.get('cited', '-')} | {summary.get('removed', '-')} "
+        f"| US$ {summary['cost_usd']:.4f} |",
+        "",
+    ]
+    if summary["stopped_at_budget"]:
+        lines += ["Parou no teto de custo antes da última pergunta.", ""]
+    misses = [r for r in rows if not r["top5"] or (summary["mode"] == "agent" and not r["cited"])]
+    if misses:
+        lines += ["| Errou | Posição | Fontes |", "|---|---|---|"]
+        lines += [
+            f"| {r['id']} | {r['rank'] or '-'} | {', '.join(r['sources'][:5])} |" for r in misses
+        ]
+        lines.append("")
+    lines.append(f"Embedding `{summary['embedding_model']}`, rerank `{summary['rerank']}`.")
+    return "\n".join(lines) + "\n"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -129,6 +220,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     smoke.add_argument(
         "--file", type=Path, default=SMOKE_FILE, help="question file (default: smoke_cdc.jsonl)"
     )
+    smoke.add_argument(
+        "--min-recall", type=float, help="pass when recall@5 reaches this (default: all)"
+    )
+    smoke.add_argument(
+        "--max-cost-usd", type=float, help="stop before the next question past this model cost"
+    )
+    smoke.add_argument("--report", type=Path, help="write the rows and the summary as JSON")
+    smoke.add_argument("--markdown", type=Path, help="write a Markdown table for a PR comment")
 
     args = parser.parse_args(argv)
     if isinstance(sys.stdout, io.TextIOWrapper):
