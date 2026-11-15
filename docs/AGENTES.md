@@ -10,7 +10,7 @@ Catálogo dos agentes e das ferramentas da Ementa: o que cada um faz, como o gra
 |---|---|---|---|---|
 | Pesquisa jurídica | `legal_research` | RAG agêntico com reflexão | F1, F2, F5 | Documentado |
 | Assistente | `assistant` | Supervisor que roteia | F3 | Implementado |
-| Análise de contratos | `contract_review` | Map-reduce por cláusula | F4 | Documentado |
+| Análise de contratos | `contract_review` | Map-reduce por cláusula | F4 | Implementado |
 | Redação de peças | `brief_drafting` | Plan-and-execute com crítico e HITL | F4 | Documentado |
 | Prazos e processos | `case_monitor` | Workflow agendado | F5 | Documentado |
 | Triagem e conflito | `intake` | Extração estruturada e verificação em grafo | F5 | Documentado |
@@ -271,36 +271,60 @@ data: {"event":"done","thread_id":"7c2af06a-ef81-470c-b55a-5e2cad731fe9","messag
 
 ## Análise de contratos (`contract_review`)
 
-**Objetivo.** Ler um contrato, apontar cláusulas de risco segundo o playbook do escritório e propor redlines.
+**Objetivo.** Ler um contrato de consumo de serviços, apontar as cláusulas que o playbook do escritório condena, com o fundamento no CDC ou numa súmula do STJ do corpus, e propor a redação nova de cada uma.
 
-**Gatilho e canal.** Upload no console ou ferramenta MCP `review_contract` (tarefa longa, F4).
+**Gatilho e canal.** Hoje, `services.contract_review_agent().review(conteúdo, nome_do_arquivo)`. A rota `POST /v1/contracts/{id}/review`, a caixa de aprovações do console e a ferramenta MCP `review_contract` entram na integração da F4.
 
-**Padrão e por quê.** Map-reduce por cláusula. Cada cláusula é analisada em paralelo com `Send` do LangGraph, com contexto pequeno e focado; a redução junta os achados e elimina repetição.
+**Padrão e por quê.** Map-reduce por cláusula. Cada cláusula vai a um `analyze_clause` próprio com `Send` do LangGraph, em paralelo e com contexto pequeno: o modelo nunca vê o contrato inteiro. Dentro do map, as regras do playbook rodam primeiro, por código; os critérios que pedem julgamento vão depois ao modelo `fast`. A redução junta os achados numa linha por cláusula e regra.
 
 ```mermaid
 flowchart TD
-    A["parse_document"] --> B["split_clauses"]
-    B --> C["analyze_clause em paralelo"]
-    C --> D["aggregate_findings"]
-    D --> E["draft_redlines"]
-    E --> F["human_review"]
-    F -->|"aprovado"| G["publish_report"]
-    F -->|"pedido de ajuste"| E
+    A["parse_document: Markdown, texto ou PDF"] --> B["split_clauses: cláusulas e pseudonimização"]
+    B -->|"Send, uma por cláusula"| C["analyze_clause: regras e depois critérios no fast"]
+    C --> D["aggregate_findings: matriz de risco"]
+    D --> E["verify_citations: fundamento só do corpus"]
+    E --> F["draft_redlines: redação sugerida e relatório"]
+    F --> G["human_review: ask_for_approval"]
+    G -->|"approve ou edit"| H["publish_report"]
+    G -->|"reject"| H
 ```
 
-**Estado:** `document_id`, `clauses`, `findings` (cláusula, regra, risco, justificativa), `redlines`, `review_decision`, `cost_usd`.
+- `parse_document`: o mesmo `extract_text` dos documentos da F3 (pypdf para PDF); até 2 MiB. PDF sem camada de texto é recusado.
+- `split_clauses`: corta nos títulos ("Cláusula 5ª – Do foro", "CLÁUSULA QUINTA", "## 5. Do foro", "5. DO FORO"); o preâmbulo e o fecho (local, data, assinaturas) ficam fora; sem título, cada parágrafo é uma cláusula. Pseudonimiza cada cláusula com o `pii_guard()` e um mapeamento só para o contrato, para o mesmo nome ter o mesmo marcador em todas.
+- `analyze_clause`: as regras do playbook (`check_playbook_rule`, sem modelo) e, fora do modo só regras, os critérios (`classify_clause`): a cláusula pseudonimizada, os critérios e o que as regras já acharam vão ao `fast` com o prompt `contract_review.clause` v1, que devolve JSON com critério, trecho, motivo e sugestão. JSON inválido ganha uma nova tentativa, acrescentada à conversa. Critério desconhecido é descartado. O texto do modelo volta com os valores reais.
+- `aggregate_findings`: uma linha por cláusula e regra, na ordem do contrato, a mais grave primeiro e as regras antes do modelo. Gravidade e fundamento vêm do playbook, nunca do modelo.
+- `verify_citations`: o verificador da F1 sobre cada texto da linha, com o corpus inteiro (CDC e súmulas do STJ, sem os dispositivos vetados) como fontes permitidas. Fonte fora dele ou artigo citado sem id sai; linha que fica sem fundamento sai também; tudo vai para `removed`.
+- `draft_redlines`: troca cada frase apontada pela redação do escritório (regra) ou pela sugestão do modelo (critério), com o número do item ("5.2") mantido; redação vazia tira a frase; trecho que não está na cláusula vira acréscimo. Depois monta o relatório em Markdown: resumo, avisos, matriz, redlines e o texto literal de cada fundamento.
+- `human_review`: chama `ask_for_approval(ApprovalRequest(agent="contract_review", kind="contract_report", ...))` com o relatório como `draft` e a classe `restricted`. O grafo é compilado com checkpointer e para ali. Edição sem texto não decide: o pedido volta.
+- `publish_report`: `approve` publica o rascunho; `edit` publica o texto do advogado; `reject` não publica nada e encerra. Mandar ao cliente fica com quem chamou.
 
-| Ferramenta | Tipo | Guardrails |
+**Estado** (no checkpointer, uma thread por revisão; só registros simples, sem tipos próprios, que o serializador do LangGraph vai recusar):
+
+| Campo | Conteúdo |
+|---|---|
+| `filename`, `media_type`, `content`, `document_id`, `requested_by` | O arquivo como chegou e quem pediu |
+| `rules_only`, `playbook`, `prompt`, `model` | O modo e as versões, fixados no começo da revisão |
+| `clauses`, `masked`, `pii_mapping` | As cláusulas, o texto que o modelo vê e o mapeamento dos marcadores |
+| `findings`, `unreviewed` | O que cada `analyze_clause` achou e as cláusulas que o modelo não avaliou (redutor de soma, um lote por cláusula) |
+| `matrix`, `removed`, `redlines`, `draft` | Matriz de risco, o que o verificador tirou, redações sugeridas e o relatório |
+| `decision`, `status`, `final` | A decisão do advogado (`ApprovalDecision` em JSON), `approved`, `edited` ou `rejected`, e o texto publicado |
+
+| Ferramenta (span) | Tipo | Guardrails |
 |---|---|---|
-| `parse_document` | Leitura | Detecção de texto oculto em PDF e DOCX (F6), tamanho máximo |
-| `classify_clause` | Leitura | Saída estruturada |
-| `check_playbook_rule` | Leitura | Regra determinística do playbook antes do julgamento do modelo |
+| `parse_document` | Leitura | Tipo e tamanho do arquivo (2 MiB); detecção de texto oculto fica para a F6 |
+| `check_playbook_rule` | Leitura, determinística | Regras do playbook, sem modelo |
+| `classify_clause` | Leitura, modelo `fast` | Cláusula pseudonimizada, JSON validado, critério do playbook |
 
-- **Modelo:** `fast` para classificar cláusulas; `reasoning` (effort high) para redlines.
-- **Memória:** playbook e teses aprovadas do escritório no namespace do escritório.
-- **HITL:** obrigatória antes de publicar o relatório.
-- **Métricas:** F1 sobre os contratos fictícios com cláusulas plantadas; taxa de falso alarme; custo por contrato.
-- **Custo estimado:** ordem de dezenas de centavos de dólar por contrato médio (estimativa, conferir na F4). **Fase:** F4. **Status:** Documentado.
+- **Playbook:** `data/firm/playbooks/consumer-services.yaml`, fictício: 16 regras e 4 critérios, cada um com id, gravidade, fundamento (ids do corpus), motivo citando o fundamento e redação sugerida. Regra é padrão sobre o texto sem acento (`all`, `any`, `none`) e, em duas, um número acima do limite perto de uma palavra na mesma frase (multa acima de 2%; carência acima de 24 horas perto de "urgência"). O teste confere que todo fundamento existe no corpus e que o motivo cita exatamente o fundamento.
+- **Modelo:** só o `fast`, e só nos critérios. As redlines saem da redação do playbook, e não do `reasoning` previsto no desenho: é a posição já aprovada do escritório, não custa chamada e o teste a confere palavra por palavra. A troca é a redação genérica; o advogado ajusta na aprovação. Nos critérios, a sugestão é do modelo.
+- **Modo só regras:** `review(..., rules_only=True)` não chama modelo nem carrega o guardrail de PII; o relatório avisa que os critérios não foram avaliados. Sem chave, a revisão completa falha antes de começar (`ModelUnavailableError`).
+- **Falhas:** cláusula em que o modelo falha ou não devolve JSON depois da nova tentativa fica com os achados das regras e entra em `unreviewed`, que o relatório e o resumo da aprovação mostram. Orçamento estourado para a revisão.
+- **Memória:** nenhuma ainda. A memória episódica das aprovações é a outra parte da F4.
+- **HITL:** obrigatória. `resume(thread_id, decisão)` confere que há aprovação pendente e que a edição traz texto; a API de aprovações pode também retomar direto com `Command(resume=decisão.model_dump())`, de outro processo.
+- **Telemetria:** `invoke_agent contract_review` na revisão e na retomada, com `gen_ai.conversation.id` (a thread), playbook, prompt e as contagens; dentro, `execute_tool parse_document`, um `execute_tool check_playbook_rule` e um `execute_tool classify_clause` por cláusula (o evento `ementa.context.section_tokens` vai neste), `guardrail pii` por cláusula e `guardrail citation_verifier`. Nenhum texto do contrato vai para span ou log.
+- **Dados de avaliação:** 10 contratos fictícios em `data/firm/contracts/` (academia, pilates, curso online, idiomas, internet, streaming, plano de saúde, odontológico, faxina, estacionamento), em Markdown e em texto, com 97 cláusulas: 49 plantadas com problema e 48 limpas. O gabarito é `evals/contracts_planted.jsonl`. Os números estão em [Avaliação](AVALIACAO.md#cláusulas-plantadas-f4).
+- **Métricas:** precisão, recall e F1 por par (cláusula, regra) e por cláusula; taxa de cláusula não avaliada; custo por contrato.
+- **Custo estimado:** uma chamada `fast` por cláusula, com cerca de 700 tokens de entrada (contados nos 10 contratos à razão de 4 caracteres por token, com modelo falso): por volta de US$ 0,001 por contrato de 10 cláusulas no GPT-6 Luna, e de US$ 0,01 pela avaliação inteira. É estimativa pelos preços de `prices.toml`, sem chamada real. **Fase:** F4. **Status:** Implementado (grafo, playbook, aprovação e avaliação das regras); a rota, o console e a ferramenta MCP ficam para a integração.
 
 ## Redação de peças (`brief_drafting`)
 

@@ -255,6 +255,7 @@ Modelo de NER: em 51 frases jurídicas fictícias com 33 nomes, já com o format
 - O modelo recebe as fontes com ids canônicos (`cdc:art49`, `cdc:art42:pu`, `cpc:art219`, `stj:sumula:385`) e cita por id.
 - O verificador extrai toda citação da resposta (id e menção textual, como "art. 49 do CDC") e confere contra as fontes que foram para o contexto daquela chamada. Citação fora delas é removida, mesmo que exista no corpus.
 - Citação não encontrada: na pesquisa, é removida e a resposta ganha um aviso; na peça, a finalização é bloqueada até revisão.
+- Na revisão de contrato (F4), o fundamento de cada achado vem do playbook e as fontes permitidas são o corpus inteiro (CDC e súmulas do STJ, sem os dispositivos vetados): a frase que cita outra coisa sai, o achado sem fundamento conferido sai, e o relatório lista os dois. O modelo só vê a cláusula pseudonimizada.
 - A taxa de citações removidas é métrica e entra na avaliação (ver [Avaliação](AVALIACAO.md)).
 
 ## Política de HITL
