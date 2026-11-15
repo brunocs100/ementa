@@ -5,6 +5,7 @@ from ementa_kit.config import Environment, Settings
 
 def test_defaults_point_to_local_services(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("EMENTA_ENV", raising=False)
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert settings.env is Environment.DEV
