@@ -8,6 +8,8 @@ dependencies = [
     "fastembed>=0.9",
     "langchain-core>=1.8",
     "langchain-openai>=1.8",
+    # LangGraph store on Postgres with pgvector: long-term memory (F3)
+    "langgraph-checkpoint-postgres>=3.2",
     "opentelemetry-exporter-otlp-proto-http>=1.38",
     "opentelemetry-instrumentation-openai-v2>=2.4b0",
     # openai-v2 2.4b0 imports a module that util-genai 1.x renamed

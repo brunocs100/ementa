@@ -169,6 +169,17 @@ def _parse_marker(marker: str) -> tuple[str, int]:
     return match.group(1), int(match.group(2))
 
 
+def canonical_value(entity: str, value: str) -> str:
+    """The form two values of `entity` share when they are the same: `123.456.789-09` and
+    `12345678909` are one CPF, `José Souza` and `jose  souza` one name."""
+    return _key(entity, value)
+
+
+def find_markers(text: str) -> list[tuple[str, str]]:
+    """Each marker written in `text`, such as `[CPF_1]`, with its entity, in order."""
+    return [(m.group(0), m.group(1)) for m in _MARKER.finditer(text)]
+
+
 class PiiGuard:
     """Finds Brazilian PII and swaps it for markers that stay the same across a conversation."""
 
