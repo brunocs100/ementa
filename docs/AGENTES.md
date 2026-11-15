@@ -9,7 +9,7 @@ Catálogo dos agentes e das ferramentas da Ementa: o que cada um faz, como o gra
 | Agente | id | Padrão | Fase | Status |
 |---|---|---|---|---|
 | Pesquisa jurídica | `legal_research` | RAG agêntico com reflexão | F1, F2, F5 | Documentado |
-| Assistente | `assistant` | Supervisor que roteia | F3 | Documentado |
+| Assistente | `assistant` | Supervisor que roteia | F3 | Implementado |
 | Análise de contratos | `contract_review` | Map-reduce por cláusula | F4 | Documentado |
 | Redação de peças | `brief_drafting` | Plan-and-execute com crítico e HITL | F4 | Documentado |
 | Prazos e processos | `case_monitor` | Workflow agendado | F5 | Documentado |
@@ -201,40 +201,73 @@ O `assistant` não é exposto por MCP; o cliente externo chama as ferramentas di
 
 **Objetivo.** Porta de entrada única de chat: entende o pedido e delega ao agente certo.
 
-**Gatilho e canal.** Chat no console e rota `/v1/chat` com SSE (F3).
+**Gatilho e canal.** Rota `POST /v1/chat` com SSE (F3) e, na F4, o chat do console. O histórico de uma conversa sai em `GET /v1/threads/{id}`, só para quem a abriu.
 
-**Padrão e por quê.** Supervisor que roteia. Cada subagente roda na própria conversa com o modelo, o que isola contexto e mantém o histórico só de acréscimo em cada uma.
+**Padrão e por quê.** Supervisor que roteia por chamada de ferramenta. A cada turno, o modelo `fast` recebe as ferramentas que o papel de quem pergunta pode usar e decide se chama o `legal_research`, o `calculate_deadline` ou responde direto (fora do escopo, pedido de dado que falta). O mesmo modelo escreve a resposta com o que a ferramenta devolveu. Cada subagente roda na própria conversa com o modelo: o `legal_research` monta o próprio contexto com as fontes e não grava nada na conversa do chat, o que isola contexto e mantém o histórico só de acréscimo em cada uma.
+
+Na F3, o roteamento por function calling substituiu o nó de classificação com rota e confiança do desenho: é uma chamada a menos por turno e não precisa de um nó para compor a resposta. A troca é perder o número de confiança do roteamento; a acurácia fica para o conjunto rotulado. Os agentes das fases seguintes (`contract_review`, `brief_drafting`, `case_monitor`, `firm_analytics`) entram como ferramentas novas do mesmo supervisor.
 
 ```mermaid
 flowchart TD
-    A["receive_message"] --> B["route"]
-    B -->|"pesquisa"| C["legal_research"]
-    B -->|"contrato"| D["contract_review"]
-    B -->|"peça"| E["brief_drafting"]
-    B -->|"prazo"| F["calculate_deadline"]
-    B -->|"processo, a partir da F5"| J["case_monitor"]
-    B -->|"números do escritório"| G["firm_analytics"]
-    B -->|"fora do escopo"| H["answer_directly"]
-    C --> I["compose_reply"]
-    D --> I
-    E --> I
-    F --> I
-    J --> I
-    G --> I
-    H --> I
+    A["mensagem do usuário"] -->|"PII vira marcador"| M["memórias relevantes, com os mesmos marcadores"]
+    M -->|"na mensagem do turno, antes da pergunta"| B["supervisor, modelo fast"]
+    B -->|"chamou ferramenta"| C["tools: legal_research ou calculate_deadline"]
+    C -->|"resultado como mensagem nova"| B
+    B -->|"respondeu"| D["finalize: confere as citações"]
+    D --> E["evento done, com os valores reais"]
+    E --> W["escritor de memória: o que o turno ensinou"]
 ```
 
-**Estado:** `messages`, `user_id`, `user_role`, `route`, `route_confidence`, `delegated_result`, `cost_usd`.
+**Estado** (no checkpointer, uma thread por conversa):
+
+| Campo | Conteúdo |
+|---|---|
+| `messages` | Tudo o que o modelo viu, pseudonimizado e só de acréscimo, inclusive o que ficou antes de uma compactação; o prompt de sistema é a primeira mensagem e congela quando a conversa começa |
+| `view_start` | Depois de uma compactação, a posição do último resumo em `messages`: a visão do modelo é o prompt de sistema e o que vem dali em diante |
+| `pii_mapping` | Marcador e valor de cada dado pessoal da conversa, os das memórias inclusive; só cresce, e o mesmo valor mantém o marcador em todos os turnos |
+| `owner_id`, `prompt` | Quem abriu a conversa e o id e a versão do prompt congelado |
+| `allowed_tools`, `rounds` | Ferramentas do turno, pelo papel de quem pergunta, e chamadas ao modelo no turno |
+| `question` | A mensagem do turno, pseudonimizada e sem as memórias que vieram com ela: é o que o histórico mostra |
+| `sources` | Fontes verificadas pelo `legal_research` na conversa |
+| `turns` | Cada turno terminado como o usuário vê, ainda com marcadores: reidratado na leitura |
 
 | Ferramenta | Tipo | Guardrails |
 |---|---|---|
-| Subgrafos dos agentes | Conforme o agente | Lista permitida por papel (estagiário não chega ao BI) |
+| `legal_research` | Subagente, leitura | Lista permitida por papel; a pergunta chega já pseudonimizada; citações verificadas dentro dele e de novo na resposta final |
+| `calculate_deadline` | Leitura, determinística | Schema estrito; o vencimento vem do código, e o modelo nunca conta dias |
 
-- **Modelo:** `fast` no roteamento, com saída estruturada (rota e confiança); `default` na resposta final. Na F9, o roteamento pode passar para o modelo local ajustado.
-- **Memória:** curta (checkpointer por thread) e longa (preferências do advogado).
+- **Modelo:** `fast` no roteamento e na resposta (GPT-6 Luna, effort low). Na F9, pode passar para o modelo local ajustado.
+- **Prompt:** `assistant.supervisor` v1 em `prompts/assistant/`. Uma conversa aberta continua com o prompt da versão em que começou. As seções `memorias` e `resumo` chegam delimitadas por tags e o v1 não fala delas; uma v2 que as explique depende de rodar a avaliação.
+- **Visão do modelo:** derivada do estado, sem editar nada: cada pedido começa com o pedido anterior inteiro (teste com `assert_append_only`, inclusive depois de reiniciar o processo). Resultado de ferramenta é truncado em 6.000 caracteres antes de entrar; o completo fica no `artifact` da mensagem, que não vai ao modelo.
+- **Compactação:** quando a visão passa de `EMENTA_CONTEXT_BUDGET_TOKENS` (8.000 tokens aproximados, cerca de cinco turnos com pesquisa), o turno seguinte a resume antes de a mensagem entrar, com o `compact` do kit. O pedido de resumo é a visão inteira com o prompt `context.summarize` v1 no fim e as ferramentas do último turno com `tool_choice: none`, então reaproveita o prefixo em cache. O resumo entra em `messages` como mensagem nova e `view_start` aponta para ele: daí em diante a visão é o prompt de sistema, o resumo e o que vem depois, de novo só de acréscimo (teste também com reinício no Postgres). O estado guarda a conversa inteira para auditoria e o histórico mostra todos os turnos. O evento `ementa.context.compacted` vai para o `invoke_agent` do turno. Se o resumo falha, o erro fica no log, a visão segue inteira e o turno seguinte tenta de novo.
+- **Limites:** até 3 chamadas com ferramentas por turno; a quarta vai com `tool_choice: none` e precisa responder, com as mesmas ferramentas na lista para o prefixo não mudar. Ferramenta que falha vira resultado de erro e o turno segue. Chamada de ferramenta deixada aberta por queda do processo ganha um resultado de interrupção no começo do turno seguinte, acrescentado e não editado, porque o provedor recusa histórico com chamada sem resposta.
+- **Citações:** o `finalize` tira da resposta a frase que cita id fora das fontes verificadas na conversa e lista o que tirou em `removed`. Só os ids entre colchetes contam: as premissas do prazo citam "CPC, art. 219" em prosa.
+- **Dados pessoais:** a mensagem passa pelo `pii_guard()` antes de entrar no grafo, com o mapeamento da conversa; as memórias lidas passam em seguida, com o mesmo mapeamento, e o valor que já tem marcador o mantém. O modelo e o `legal_research` só veem marcadores. Os tokens saem com os valores reais, palavra por palavra: o fim do texto fica retido enquanto pode virar marcador (`[CP` antes de `F_1]`), de modo que os tokens juntos dão exatamente a resposta reidratada (teste por propriedade com Hypothesis).
+- **Memória:** curta no checkpointer do LangGraph no Postgres, schema `langgraph`; a conversa sobrevive a reinício do processo (teste de integração). Longa no store (`ementa.memory`): antes de o supervisor responder, o turno busca as memórias do advogado, do processo (quando quem chama passa `case_id`) e do escritório pela mensagem como foi digitada, no e5 local, e manda a seção `memorias` (até 600 tokens) na mensagem do próprio turno, antes da pergunta (`<pergunta>`), nunca numa mensagem anterior. Depois do `done`, ainda no mesmo fluxo, o `MemoryWriter` aprende com o turno (a mensagem e a resposta final) nos namespaces de `chat_targets` e com o mapeamento da conversa; `EMENTA_MEMORY_WRITE_ENABLED=false` desliga a escrita e mantém a leitura. Store ou escritor que falha fica no log e não derruba a conversa. A rota `POST /v1/chat` ainda não recebe `case_id`, porque falta conferir a permissão por processo (F6).
 - **HITL:** herda dos subagentes.
-- **Métricas:** acurácia do roteamento num conjunto rotulado; taxa de "fora do escopo"; custo por conversa.
-- **Custo estimado:** um roteamento custa uma fração de centavo; o resto é o do subagente. **Fase:** F3. **Status:** Documentado.
+- **Telemetria:** `invoke_agent assistant` com `gen_ai.conversation.id`; dentro dele, `retrieval memory`, `execute_tool legal_research` (com o `invoke_agent legal_research` embaixo) ou `execute_tool calculate_deadline`, `guardrail pii`, `guardrail citation_verifier` e, depois do `done`, `memory write`. O turno que compacta leva o evento `ementa.context.compacted`.
+- **Métricas:** acurácia do roteamento num conjunto rotulado (a fazer); taxa de "fora do escopo"; custo por conversa.
+- **Custo estimado:** um roteamento custa uma fração de centavo; o resto é o do subagente. A escrita de memória é mais uma chamada `fast` por turno; a compactação, uma chamada cada vez que a conversa passa do orçamento, quase toda no prefixo em cache. **Fase:** F3. **Status:** Implementado (supervisor, memória curta e longa, compactação e SSE).
+
+Eventos do `POST /v1/chat`, um JSON por evento no `data` do SSE, com o tipo no campo `event`:
+
+| `event` | Campos | Quando |
+|---|---|---|
+| `step` | `name` (`supervisor`, `legal_research`, `calculate_deadline`), `status` (`started`, `finished`, `denied`, `failed`) | Começo e fim de cada chamada ao modelo e de cada ferramenta |
+| `token` | `text` | Pedaço da resposta, palavra inteira, com os valores reais |
+| `citation` | `source_id`, `title`, `url` | Fonte verificada pelo `legal_research`, assim que a ferramenta volta |
+| `done` | `thread_id`, `message`, `removed`, `notice` | Último evento; `message` é a resposta conferida e prevalece sobre os tokens juntos. O fluxo fecha depois, quando o escritor de memória termina |
+| `error` | Campos de problema RFC 9457 (`type`, `title`, `status`, `detail`, `instance`) | Erro depois de aberto o fluxo; antes dele, a resposta é o problema com o status HTTP (404, 422, 503) |
+
+```text
+data: {"event":"step","name":"legal_research","status":"started"}
+
+data: {"event":"citation","source_id":"cdc:art49","title":"Código de Defesa do Consumidor, art. 49","url":"https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm"}
+
+data: {"event":"token","text":"Pode desistir "}
+
+data: {"event":"done","thread_id":"7c2af06a-ef81-470c-b55a-5e2cad731fe9","message":"Pode desistir em 7 dias [cdc:art49].","removed":[],"notice":"Rascunho para conferência do advogado responsável. Não é aconselhamento jurídico."}
+```
 
 ## Análise de contratos (`contract_review`)
 

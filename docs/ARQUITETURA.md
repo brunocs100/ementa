@@ -108,8 +108,8 @@ flowchart LR
 | `otel-lgtm` | `grafana/otel-lgtm` (OTel Collector, Prometheus, Tempo, Loki, Pyroscope) | `obs` | 3000, 4317, 4318 | 1 a 1,5 GB | F0 |
 | `mcp` | `apps/mcp_server` (HTTP); stdio roda local | `mcp` | 8100 | 300 MB | F2 |
 | `api` | `apps/api` (FastAPI e console) | `core` | 8000 | 500 MB | F2 |
-| `redis` | `redis:7` | `core` | 6379 | 50 MB | F3 |
-| `worker` | `apps/worker` (arq) | `core` | — | 500 MB a 1 GB (embeddings) | F3 |
+| `redis` | `redis:8.10.3-alpine`, com arquivo append-only e `noeviction` | `core` | 6379, só em 127.0.0.1 | até 128 MB | F3 |
+| `worker` | `apps/worker` (arq); `uv run ementa-worker` roda local | `core` | — | 500 MB a 1 GB (embeddings) | F3 |
 | `neo4j` | `neo4j:5` Community | `grafo` | 7474, 7687 | 1 GB | F5 |
 | `mailpit` | `axllent/mailpit` | `mail` | 1025, 8025 | 50 MB | F5 |
 | `mlflow` | MLflow com SQLite | `ml` | 5000 | 300 MB | F9 |
@@ -218,6 +218,35 @@ sequenceDiagram
     G-->>W: DOCX com aviso de rascunho
 ```
 
+### Documento do escritório em fila (F3)
+
+```mermaid
+sequenceDiagram
+    actor U as Advogado
+    participant A as API
+    participant P as Postgres
+    participant R as Redis
+    participant W as ementa-worker
+    U->>A: POST /v1/documents (txt, md ou pdf)
+    A->>P: firm.documents, uma linha por quem envia e sha256
+    A->>P: ai.jobs, uma tarefa por documento
+    A->>R: enfileira a tarefa com o id dela e o contexto do trace
+    A-->>U: 202, id da tarefa e Location
+    W->>R: pega a tarefa
+    W->>P: lê os bytes, marca running
+    W->>W: texto, pedaços sob os títulos, embeddings locais
+    W->>P: chunks restritos em firm_knowledge, tarefa succeeded
+    U->>A: GET /v1/jobs/{id}
+    A->>P: estado da tarefa
+    A-->>U: status, tentativas e resultado
+```
+
+- Idempotência: o mesmo arquivo enviado de novo pelo mesmo usuário devolve a mesma tarefa e não grava nada; o arq recusa um segundo job com um id que já tem. A tarefa volta para a fila só se tinha falhado, ou se o Redis a perdeu.
+- A tarefa roda pelo menos uma vez (de novo se o worker cair no meio). Por isso ela é idempotente: documento já indexado não é reprocessado e os chunks de um documento são trocados numa transação só.
+- Erro que pode passar (banco, download do modelo, tentativa acima de 10 minutos) volta com backoff exponencial e jitter: a segunda tentativa espera de 2,5 a 5 s, cada uma seguinte o dobro, até 5 tentativas. Arquivo ilegível falha de vez, com o motivo na tarefa.
+- O estado da tarefa fica no Postgres; o arq não guarda resultado. Os argumentos do job vão em JSON, nunca em pickle (o padrão do arq): quem escreve no Redis não roda código no worker.
+- Formatos: texto e Markdown em UTF-8; PDF com camada de texto, pelo `pypdf` (Python puro, BSD, mantido). PDF escaneado é recusado: não há OCR. Limite de 2 MiB por arquivo.
+
 ### Prazos via DataJud (F5)
 
 ```mermaid
@@ -300,7 +329,9 @@ erDiagram
     }
 ```
 
-Schemas: `firm` (users, clients, cases, case_members, parties, deadlines, movements, documents, time_entries), `knowledge` (sources, chunks), `ai` (runs, tool_calls, guardrail_events, approvals, feedback, eval_runs, eval_results, budgets), `audit` (events, só inserção, com hash encadeado), `analytics` (views para o BI) e `langgraph` (checkpointer e store).
+Schemas: `firm` (users, clients, cases, case_members, parties, deadlines, movements, documents, time_entries), `knowledge` (sources, chunks), `firm_knowledge` (sources, chunks dos documentos do escritório), `ai` (runs, tool_calls, guardrail_events, approvals, feedback, eval_runs, eval_results, jobs, model_usage), `audit` (events, só inserção, com hash encadeado), `analytics` (views para o BI) e `langgraph` (checkpointer e store).
+
+Documentos do escritório (F3): `firm.documents` guarda os bytes, quem enviou (`uploaded_by`), o dono (`owner_id`), quem pode ler (`acl`, que começa com o dono) e `secrecy_level = 'restricted'`. Os chunks deles herdam o nível e a lista e ficam em `firm_knowledge`, separados do corpus público, até o RLS da F6: assim nenhuma busca do `knowledge` alcança dado do escritório e o `ementa ingest --reset`, que recria o `knowledge`, não apaga documento de ninguém. Na F6 as policies usam `owner_id` e `acl` e decidem se os dois índices se juntam.
 
 RLS nos chunks: trecho público (corpus) aparece para todos; trecho de processo só para quem é membro do processo.
 
@@ -465,6 +496,10 @@ Regras do histórico só de acréscimo:
 
 O motivo é duplo: o cache de prompt só funciona com prefixo estável, e alguns provedores recusam histórico editado (o Claude devolve erro 400 quando o prefixo de um bloco de raciocínio muda; conferir na documentação da Anthropic). Um teste no CI compara pedidos consecutivos e falha se o prefixo mudar (F2): `assert_append_only` (`ementa_kit.context`) recebe os pedidos que um modelo falso gravou e aponta a mensagem e o caractere que mudaram; o caminho de nova tentativa do `legal_research` passa por ele.
 
+A compactação (`compact`, em `ementa_kit.context`, F3) segue as mesmas regras. Enquanto a conversa cabe no orçamento, ela devolve `None`. Passou do orçamento, o pedido de resumo é a conversa inteira, intacta, com o prompt `context.summarize` v1 acrescentado no fim: o prefixo em cache vale até para esse pedido. A conversa nova começa com o mesmo prompt de sistema e o resumo na seção `resumo`, cortado em 800 tokens. A conversa antiga não é tocada. O evento `ementa.context.compacted` registra no span corrente as mensagens e os tokens antes, os tokens depois e o prompt. Chame entre turnos, antes de a próxima pergunta entrar.
+
+No `assistant`, a compactação roda no começo do turno, quando a visão do modelo passou de `EMENTA_CONTEXT_BUDGET_TOKENS` (8.000 por padrão, no mínimo 2.000, para caber o prompt de sistema e o resumo). O pedido de resumo vai com as ferramentas do último turno e `tool_choice: none`, para o prefixo em cache valer inteiro, lista de ferramentas inclusive; por isso `compact` aceita qualquer `Runnable` de modelo, não só o `BaseChatModel`. O resumo entra no estado como mensagem nova, e `view_start` guarda onde ele está: a visão (`model_view`) passa a ser o prompt de sistema, o resumo e o que vem depois. Nada sai do estado, que continua com a conversa inteira para auditoria, e a visão é derivada dele, então outro processo manda o mesmo pedido depois de um reinício (teste de integração no Postgres).
+
 ## Memória
 
 | Tipo | Onde | Exemplo | Fase |
@@ -477,7 +512,33 @@ O motivo é duplo: o cache de prompt só funciona com prefixo estável, e alguns
 - Namespaces: `("lawyer", id)`, `("case", id)`, `("firm",)`.
 - A memória herda a permissão do processo; a leitura passa pela mesma regra do RLS.
 - Escrita depois da execução, com deduplicação por similaridade e confiança mínima.
-- Direito do titular (LGPD, art. 18): `DELETE /v1/data-subjects/{id}/memories` apaga as memórias e os chunks ligados àquela pessoa.
+- Direito do titular (LGPD, art. 18): `DELETE /v1/data-subjects/{id}/memories` apaga as memórias ligadas àquela pessoa (F3); os chunks de documento de processo entram quando esses documentos existirem.
+
+A memória longa da F3, em `ementa_kit.memory` (genérico) e `ementa.memory` (namespaces do escritório):
+
+| Item | Como funciona |
+|---|---|
+| Store | `PostgresStore` do `langgraph-checkpoint-postgres` 3.2, no schema `langgraph` pelo `search_path` de cada conexão: tabelas `store`, `store_vectors` e as de migração, ao lado das do checkpointer, que têm outros nomes. `services.memory_store()` abre um pool de conexões e roda as migrações no primeiro uso |
+| Índice | pgvector no campo `text`, com o mesmo e5 local da busca (`services.local_embedder()`, carregado uma vez por processo). Busca exata, sem HNSW: filtrada por namespace, a busca aproximada pode devolver menos itens que o pedido, e a memória de um escritório é pequena. O store embute o que grava e o que busca pela mesma chamada, então os dois lados levam o prefixo `query: `, como o E5 pede em tarefa simétrica |
+| Item | `text` (com os dados como foram ditos, no banco do escritório), `subjects` (ids dos titulares citados, em ordem), `confidence` e `owner` (tipo e id do dono do namespace) |
+| Escrita | `MemoryWriter.write(turno, alvos, mapping)`, depois da execução. O turno passa pelo guardrail de PII; o papel `fast`, com o prompt `memory.extract` v1, devolve candidatas em JSON com marcadores (`[PESSOA_1]`); cada marcador volta ao valor só para o store. Até 5 por turno; abaixo de `EMENTA_MEMORY_MIN_CONFIDENCE` (0,7) fica de fora; marcador inventado pelo modelo descarta a candidata; JSON inválido ganha uma nova tentativa, acrescentada à conversa. No chat, roda depois do evento `done`, ainda no mesmo fluxo SSE, com a mensagem do usuário, a resposta final e o mapeamento da conversa; `EMENTA_MEMORY_WRITE_ENABLED=false` a desliga, e uma falha fica no log sem derrubar a conversa |
+| Alvos | Quem chama diz onde o turno pode escrever, pelo tipo do namespace. Um turno de chat escreve na preferência do advogado e na ficha do processo (`chat_targets`); a tese do escritório só entra por um fluxo de aprovação |
+| Deduplicação | A candidata substitui a memória mais parecida do mesmo namespace com exatamente os mesmos titulares, se o cosseno chega a `EMENTA_MEMORY_DEDUPE_SIMILARITY` (0,97); senão, entra como nova. Titulares diferentes nunca se juntam: no e5, "João quer acordo" e "Maria quer acordo" dão 0,973, mais que muitas reescritas do mesmo fato |
+| Titulares | O id é `ds_` mais o HMAC-SHA-256, com a chave `EMENTA_DATA_SUBJECT_KEY`, do tipo e do valor na forma que o guardrail compara: `123.456.789-09` e `12345678909` dão o mesmo id. Todo valor achado no texto final vira etiqueta, venha de marcador ou não. Sem a chave, o id não leva ao valor, nem testando todos os CPFs |
+| Leitura | `relevant_memories(store, pergunta, user_id=..., case_id=...)`: até 3 por namespace (o do advogado, o do processo e o do escritório), o mais próximo primeiro. `memory_section` monta a seção `memorias` dentro dos 600 tokens. O texto vem com os dados em claro: pseudonimize com o mapeamento da conversa antes do modelo de nuvem. O `assistant` busca pela mensagem como foi digitada (o e5 roda local), mascara a seção com o mapeamento da thread e a manda na mensagem do turno, antes da pergunta; o histórico mostra só a mensagem digitada. Store que falha deixa o turno sem memórias, não sem resposta |
+| Permissão | O namespace guarda o dono. Quem chama passa só o `case_id` de um processo que o usuário pode ver; a regra do RLS chega na F6 |
+| Esquecimento | `forget_subject(store, id)` apaga as memórias do titular em todos os namespaces e devolve quantas; o span guarda só a contagem. Lê o store inteiro, porque o filtro do store só compara igualdade. Basta no tamanho de um escritório; depois, um índice GIN em `subjects` |
+
+O limiar de 0,97 saiu de 30 pares fictícios medidos com o e5 (14 reescritas ou atualizações do mesmo fato e 16 fatos distintos do mesmo escopo):
+
+| Limiar | Reescritas juntadas | Fatos distintos juntados por engano |
+|---|---|---|
+| 0,95 | 12 de 14 | 6 de 16 |
+| 0,96 | 11 de 14 | 3 de 16 |
+| 0,97 | 10 de 14 | 0 de 16 |
+| 0,98 | 7 de 14 | 0 de 16 |
+
+Juntar por engano apaga um fato verdadeiro; perder uma reescrita só deixa duas memórias parecidas. Por isso o limiar fica no menor valor sem erro. O custo: uma atualização escrita de outro jeito ("quer acordo" e depois "não quer acordo", 0,968) fica como duas memórias.
 
 ## Padrões multiagente
 
@@ -542,6 +603,8 @@ O loader de runtime (`ementa_kit.skills`, F2):
 | Rota | Faz | Fase |
 |---|---|---|
 | `POST /v1/legal-research` | Pesquisa com citações | F2 |
+| `POST /v1/auth/token` | Login OAuth2 de senha; devolve JWT de 15 minutos | F3 |
+| `GET /v1/audit/events` | Trilha de auditoria, paginada por cursor (sócia, DPO e TI) | F3 |
 | `POST /v1/chat` | Conversa com o `assistant`, em SSE | F3 |
 | `GET /v1/threads/{id}` | Histórico de uma conversa | F3 |
 | `POST /v1/documents` | Upload e ingestão em fila | F3 |
@@ -555,7 +618,29 @@ O loader de runtime (`ementa_kit.skills`, F2):
 | `DELETE /v1/data-subjects/{id}/memories` | Esquecimento (LGPD) | F3 |
 | `GET /healthz`, `GET /readyz` | Saúde e prontidão | F2 |
 
-Convenções: JWT de curta duração com papel; erros no formato RFC 9457 (`application/problem+json`); `Idempotency-Key` nos POST que iniciam tarefa; paginação por cursor; limite de taxa por usuário no Redis; OpenAPI com exemplos.
+Convenções: JWT de curta duração com papel; erros no formato RFC 9457 (`application/problem+json`); `Idempotency-Key` nos POST que iniciam tarefa (em `POST /v1/documents` a chave é o próprio conteúdo: sha256 por usuário); paginação por cursor; limite de taxa por usuário no Redis; OpenAPI com exemplos.
+
+Problemas próprios da F3: `/problems/budget-exceeded` (429, com o limite atingido no `detail` e `Retry-After` até a virada), `/problems/document-too-large` (413), `/problems/unsupported-media-type` (415), `/problems/invalid-document` (422) e `/problems/queue-unavailable` (503; reenviar o arquivo não duplica nada). A tarefa de outro usuário responde 404, como se não existisse.
+
+### Chat em SSE (F3)
+
+`POST /v1/chat` recebe `message` e, para continuar uma conversa, `thread_id`; sem ele, começa uma nova. A resposta é `text/event-stream` com o SSE nativo do FastAPI: cada evento leva um JSON tipado em `data`, com o tipo no campo `event` (`step`, `token`, `citation`, `done` e `error`), e o OpenAPI descreve a união com discriminador. Os campos de cada evento estão em [Agentes](AGENTES.md#assistente-assistant). O `done` traz o `thread_id`.
+
+| Situação | Resposta |
+|---|---|
+| Corpo inválido | 422, problema sem os valores enviados |
+| `thread_id` de outra pessoa ou que não existe | 404, igual nos dois casos: um id de conversa não revela nada |
+| Modelo sem chave | 503, antes de abrir o fluxo |
+| Erro com o fluxo aberto | Último evento `error`, com o mesmo problema RFC 9457 que o handler daria; o status 200 já tinha saído |
+
+O que pode falhar antes do primeiro evento é conferido numa dependência da rota, antes da resposta começar, para ainda caber um status HTTP. A rota passa a cada turno as ferramentas que o papel pode usar (`can_use_tool(papel, ferramenta)`, ligado à matriz de RBAC) e o agente só oferece essas ao modelo.
+
+Dois detalhes do streaming:
+
+- **Marcadores.** O modelo responde com `[CPF_1]` e o usuário precisa ver o CPF. Um marcador pode chegar partido entre pedaços (`[CP` e `F_1]`), então o `MarkerStream` do kit segura o fim do texto enquanto ele pode virar marcador (um `[` sem `]` até 40 caracteres atrás e a última palavra) e solta o resto já reidratado. Os tokens saem palavra por palavra, e juntos dão exatamente a resposta reidratada inteira (teste por propriedade). A alternativa de reidratar só no `done` mostraria marcadores ao usuário durante a resposta; a de mandar o marcador e o mapeamento ao cliente levaria o dado pessoal a mais um lugar.
+- **Trace.** O FastAPI puxa cada evento numa thread de trabalho, cada uma com a própria cópia do contexto. O span `invoke_agent assistant` é ativado só durante cada passo e nunca atravessa um `yield`; preso entre passos, ele seria desligado noutro contexto e deixaria órfãos os spans seguintes (teste pela rota HTTP).
+
+A conversa fica no checkpointer do LangGraph no Postgres, no schema `langgraph` (`ementa_kit.memory.postgres_checkpointer`, pacote `langgraph-checkpoint-postgres`), com todos os checkpoints da thread guardados. `GET /v1/threads/{id}` lê os turnos terminados de lá e os reidrata para quem abriu a conversa.
 
 ## Falhas e resiliência
 
@@ -564,10 +649,11 @@ Convenções: JWT de curta duração com papel; erros no formato RFC 9457 (`appl
 | Provedor lento | Timeout por papel; streaming com evento de progresso |
 | Erro transitório (429, 5xx) | Retry com backoff exponencial e jitter, limitado |
 | Provedor fora | Circuit breaker por provedor; fallback configurado por papel ou erro claro |
-| Orçamento estourado | Parada antes da chamada, com erro explicando o limite |
+| Orçamento estourado | Parada antes da chamada (`BudgetExceededError`), com erro explicando o limite; na API, 429 com `Retry-After` |
 | Saída fora do schema | Rejeita e refaz uma vez; depois falha com o motivo |
 | Citação não verificada | Remove e avisa; em peça, bloqueia a finalização |
-| Worker reiniciado | Retoma do checkpoint; tarefas idempotentes |
+| Worker reiniciado | Retoma do checkpoint; o arq roda de novo a tarefa interrompida, que é idempotente |
+| Redis fora | `POST /v1/documents` responde 503; o documento e a tarefa já estão no Postgres e reenviar o arquivo enfileira de novo |
 | DataJud indisponível | Nova tentativa na próxima rodada; alerta depois de 24 h |
 
 ## Glossário

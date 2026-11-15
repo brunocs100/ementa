@@ -2,7 +2,7 @@
 
 As fases F0 a F10 da Ementa, cada uma com objetivo, entregas, tarefas, critérios de aceite, testes, competências cobertas, estimativa e riscos.
 
-**Status:** F0, F1 (Marco 1) e F2 prontas; F3 a F10 planejadas · **Ver também:** [Resumo](RESUMO.md), [Arquitetura](ARQUITETURA.md), [Agentes](AGENTES.md), [Competências](COMPETENCIAS.md)
+**Status:** F0 a F3 prontas (Marcos 1 e 2); F4 a F10 planejadas · **Ver também:** [Resumo](RESUMO.md), [Arquitetura](ARQUITETURA.md), [Agentes](AGENTES.md), [Competências](COMPETENCIAS.md)
 
 ## Objetivo e critério de sucesso
 
@@ -207,16 +207,18 @@ flowchart LR
 
 **Tarefas:**
 
-- [ ] Usuários e papéis fictícios (sócia, associado, estagiário, controladoria, DPO, TI)
-- [ ] JWT de curta duração, RBAC por rota e por ferramenta
-- [ ] `POST /v1/chat` com SSE (tokens, passos, citações) e `GET /v1/threads/{id}`
-- [ ] Checkpointer e store do LangGraph no schema `langgraph`; namespaces por advogado, processo e escritório
-- [ ] Escritor de memória pós-execução com deduplicação por similaridade; `DELETE /v1/data-subjects/{id}/memories`
-- [ ] `assistant` roteando para `legal_research` e `calculate_deadline` (papel `fast`)
-- [ ] Tabela `audit.events` com `prev_hash` e `hash`; conferência da cadeia
-- [ ] Orçamento por ambiente e por área, com parada automática
-- [ ] Redis, worker arq e ingestão em fila, com idempotência
-- [ ] Compactação: conversa nova a partir de resumo quando passar do orçamento de contexto
+- [x] Usuários e papéis fictícios (sócia, associado, estagiário, controladoria, DPO, TI)
+- [x] JWT de curta duração, RBAC por rota e por ferramenta
+- [x] `POST /v1/chat` com SSE (tokens, passos, citações) e `GET /v1/threads/{id}`
+- [x] Checkpointer e store do LangGraph no schema `langgraph`; namespaces por advogado, processo e escritório
+- [x] Escritor de memória pós-execução com deduplicação por similaridade; `DELETE /v1/data-subjects/{id}/memories`
+- [x] `assistant` roteando para `legal_research` e `calculate_deadline` (papel `fast`)
+- [x] Tabela `audit.events` com `prev_hash` e `hash`; conferência da cadeia
+- [x] Orçamento por ambiente e por área, com parada automática
+- [x] Redis, worker arq e ingestão em fila, com idempotência
+- [x] Compactação: conversa nova a partir de resumo quando passar do orçamento de contexto
+
+**Status:** pronta em 15/11/2026, no PR #7, sem nenhuma chamada paga à OpenAI: os testes usam modelos falsos. Conferido por teste: a conversa do `assistant` continua depois de recriar o agente sobre o mesmo banco; o estagiário recebe 403 na rota de auditoria; a memória de um titular esquecido some da busca; a cadeia de `audit.events` acusa a linha adulterada; o orçamento estourado devolve 429 com `/problems/budget-exceeded` antes de chamar o provedor. Login com JWT de 15 minutos e seis usuários fictícios (`uv run ementa seed-users`); permissão por rota e por ferramenta numa matriz só (`ementa.domain.access`), que o teste cobra de toda rota `/v1`; chat em SSE com os marcadores de PII protegidos no meio do fluxo de tokens; documentos do escritório em fila (Redis e arq), idempotentes pelo hash. O esquecimento ficou com DPO e TI, como na matriz de permissões.
 
 **Critérios de aceite:** a conversa sobrevive a reinício do processo; o estagiário não acessa rota de sócia; a memória de um titular apagada some da busca; a cadeia de auditoria acusa adulteração; o orçamento estourado bloqueia a chamada com erro claro.
 

@@ -92,6 +92,16 @@ def test_reranker_gets_at_least_the_hits_asked_for() -> None:
     assert [h.id for h in hits] == ["a1", "a2", "a3"]
 
 
+def test_hits_far_below_the_best_score_stay_out_of_the_context() -> None:
+    # a5 is the best (6.0); a2 is 4.0 below and stays; a1 and a3 at 0 are 6.0 below and go.
+    reranker = FakeReranker({"a5": 6.0, "a2": 2.0})
+    kb = KnowledgeBase(FakeStore(RANKINGS), FakeEmbedder(), reranker, candidates=4, margin=5.0)
+
+    hits = kb.search(["question", "rewrite"], limit=4)
+
+    assert [h.id for h in hits] == ["a5", "a2"]
+
+
 def test_no_candidates_means_no_rerank() -> None:
     reranker = FakeReranker({})
     kb = KnowledgeBase(FakeStore({"question": []}), FakeEmbedder(), reranker)
@@ -119,6 +129,7 @@ def test_rerank_span_records_model_and_counts(monkeypatch: pytest.MonkeyPatch) -
         "ementa.retrieval.mode": "rerank",
         "ementa.rerank.model": "fake-reranker",
         "ementa.rerank.candidates": 4,
+        "ementa.rerank.margin": 5.0,
         "ementa.rerank.kept": 3,
     }
     assert search.attributes is not None

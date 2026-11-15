@@ -18,7 +18,7 @@ from langgraph.graph.state import CompiledStateGraph
 from ementa.domain.citations import RemovedCitation, VerificationResult, verify_citations
 from ementa.prompts import get_prompt
 from ementa_kit.context import Section, build_context
-from ementa_kit.llm import ModelRegistry, ModelRole
+from ementa_kit.llm import BudgetExceededError, ModelRegistry, ModelRole
 from ementa_kit.rag import Hit
 from ementa_kit.telemetry import get_logger, get_tracer
 
@@ -224,6 +224,8 @@ class LegalResearchAgent:
                 [SystemMessage(self.rewrite_prompt.text), HumanMessage(question)]
             )
             lines = [_BULLET.sub("", line).strip().strip('"') for line in reply.text.splitlines()]
+        except BudgetExceededError:  # a spent budget stops the run, it is not a failed rewrite
+            raise
         except Exception as error:  # a failed rewrite only costs recall
             log.warning("rewrite_failed", error=str(error))
             lines = []
@@ -297,7 +299,9 @@ class LegalResearchAgent:
         graph.add_edge("generate_answer", "verify_citations")
         graph.add_conditional_edges("verify_citations", self._after_check)
         graph.add_edge("ask_again", "generate_answer")
-        return graph.compile(name=AGENT_ID)
+        # Called from another agent's node (the assistant's tools), a graph would inherit that
+        # agent's checkpointer and store its sources in the caller's thread. Each run stands alone.
+        return graph.compile(name=AGENT_ID, checkpointer=False)
 
     # Entry point -------------------------------------------------------------------------
 

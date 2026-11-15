@@ -1,6 +1,7 @@
 """Model prices (versioned in `prices.toml`) and the cost of one call."""
 
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -45,3 +46,34 @@ def cost_usd(
         + cached * price.cached_input
         + output_tokens * price.output
     ) / 1_000_000
+
+
+@dataclass(frozen=True)
+class CallUsage:
+    """Tokens of one model call, as the GenAI instrumentation records them on its span."""
+
+    model: str
+    input_tokens: int
+    output_tokens: int
+    cached_input_tokens: int = 0
+
+    @property
+    def cost_usd(self) -> float | None:
+        return cost_usd(self.model, self.input_tokens, self.output_tokens, self.cached_input_tokens)
+
+
+def _int(value: object) -> int:
+    return int(value) if isinstance(value, int | float) else 0
+
+
+def usage_from_attributes(attributes: Mapping[str, object]) -> CallUsage | None:
+    """The usage on a model call span (`gen_ai.usage.*`); None for any other span."""
+    if "gen_ai.usage.input_tokens" not in attributes:
+        return None
+    model = attributes.get("gen_ai.response.model") or attributes.get("gen_ai.request.model")
+    return CallUsage(
+        model=str(model or ""),
+        input_tokens=_int(attributes.get("gen_ai.usage.input_tokens")),
+        output_tokens=_int(attributes.get("gen_ai.usage.output_tokens")),
+        cached_input_tokens=_int(attributes.get("gen_ai.usage.cache_read.input_tokens")),
+    )

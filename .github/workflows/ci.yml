@@ -29,11 +29,22 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
+      redis:
+        image: redis:8.10.3-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       EMENTA_ENV: ci
       EMENTA_OTEL_ENABLED: "false"
-      # Integration tests (hybrid search SQL) run against this service; locally they skip.
+      # Integration tests (SQL, the job queue and the worker) run against these services;
+      # locally they skip unless the variables are set.
       EMENTA_TEST_DATABASE_URL: postgresql://ementa:ementa@localhost:5432/ementa
+      EMENTA_TEST_REDIS_URL: redis://127.0.0.1:6379/0
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -61,7 +72,7 @@ jobs:
           curl -sSfLO "$base/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           curl -sSfL "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt" | grep linux_x64.tar.gz | sha256sum -c -
           tar -xzf "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" gitleaks
-          ./gitleaks git --redact --exit-code 1 .
+          ./gitleaks git --redact --verbose --exit-code 1 .
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true

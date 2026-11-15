@@ -47,6 +47,14 @@ uv run ementa-api                                # API REST em http://127.0.0.1:
 uv run ementa-mcp --http                         # o mesmo MCP em Streamable HTTP, porta 8001
 uv run lint-imports                              # contratos de dependência entre pacotes
 uvx pre-commit install                           # uma vez por clone: ruff e higiene a cada commit
+
+# A partir da F3
+uv run ementa seed-users                         # seis usuários fictícios em firm.users (senhas na doc de segurança)
+uv run ementa audit verify                       # confere a cadeia de hash de audit.events
+docker compose --profile core up -d redis        # fila do worker, em 127.0.0.1:6379
+uv run ementa-worker                             # worker arq: ingestão dos documentos de POST /v1/documents
+uv run ementa-worker --burst                     # roda a fila até esvaziar e sai
+# Integração da fila e do worker: EMENTA_TEST_REDIS_URL=redis://127.0.0.1:6379/0, junto com EMENTA_TEST_DATABASE_URL
 ```
 
 A avaliação das 30 perguntas roda no GitHub Actions (`evals.yml`) com o rótulo `avaliar` no PR, toda noite ou na mão. A parte com o modelo precisa do segredo `OPENAI_API_KEY` no repositório e para no teto de custo.

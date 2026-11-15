@@ -1,4 +1,5 @@
 from collections.abc import Iterable, Sequence
+from datetime import datetime
 from functools import cache
 from typing import Any
 
@@ -21,9 +22,17 @@ from ementa.agents.legal_research.graph import (
 from ementa.ingest.corpus import SOURCE_IDS, load_statute
 from ementa.ingest.index import statute_chunks
 from ementa.knowledge import article_of
-from ementa_kit.config import Settings
+from ementa_kit.config import AreaBudget, Settings
 from ementa_kit.context import PrefixChangedError, approx_tokens, assert_append_only
-from ementa_kit.llm import ModelRegistry, ModelRole, ModelSpec
+from ementa_kit.llm import (
+    Budget,
+    BudgetExceededError,
+    ModelRegistry,
+    ModelRole,
+    ModelSpec,
+    practice_area,
+)
+from ementa_kit.llm.budget import ModelUsage, Spend
 from ementa_kit.rag import Hit
 
 
@@ -289,3 +298,38 @@ def test_render_source_of_a_sumula() -> None:
         "crédito, não cabe indenização por dano moral, quando preexistente legítima inscrição, "
         "ressalvado o direito ao cancelamento.",
     ]
+
+
+class SpentAreaLedger:
+    """The consumidor area spent its day; records which scopes the budget asked about."""
+
+    def __init__(self) -> None:
+        self.asked: list[str | None] = []
+
+    def record(self, usage: ModelUsage) -> None:
+        raise AssertionError("no call should have been made")
+
+    def spend(self, env: str, area: str | None, day: datetime, month: datetime) -> Spend:
+        self.asked.append(area)
+        return Spend(1.0, 1.0) if area == "consumidor" else Spend(1.0, 5.0)
+
+
+def test_spent_budget_stops_the_agent_before_any_model_call() -> None:
+    chats = {
+        ModelRole.FAST: ScriptedChat(messages=iter([AIMessage("consulta")])),
+        ModelRole.DEFAULT: ScriptedChat(messages=iter([AIMessage(GOOD)])),
+    }
+    ledger = SpentAreaLedger()
+    budget = Budget(ledger, "dev", 2.0, 30.0, areas={"consumidor": AreaBudget(daily_usd=1.0)})
+    registry = ModelRegistry(
+        Settings(_env_file=None),  # type: ignore[call-arg]
+        factory=lambda spec: chats[spec.role],
+        budget=budget,
+    )
+    research = LegalResearchAgent(FakeRetriever(["cdc:art49"]), registry)
+
+    with practice_area("consumidor"), pytest.raises(BudgetExceededError, match="consumidor"):
+        research.ask(QUESTION)  # the rewrite is the first call and must not swallow the stop
+
+    assert chats[ModelRole.FAST].calls == [] and chats[ModelRole.DEFAULT].calls == []
+    assert ledger.asked == [None, "consumidor"]  # the area reached the check inside the graph

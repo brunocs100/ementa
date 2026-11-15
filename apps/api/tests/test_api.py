@@ -1,5 +1,6 @@
 import json
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -7,8 +8,11 @@ from fastapi.testclient import TestClient
 
 from ementa.agents.legal_research import Citation, ResearchAnswer
 from ementa.domain.citations import RemovedCitation
+from ementa.users import FirmUser
 from ementa_api.app import create_app
-from ementa_kit.llm import ModelUnavailableError
+from ementa_api.auth import Role, User, create_access_token
+from ementa_kit.llm import BudgetExceededError, ModelUnavailableError
+from ementa_kit.llm.budget import BudgetCap, BudgetWindow
 
 OPENAPI = Path(__file__).parents[1] / "openapi.json"
 QUESTION = "Comprei pela internet e me arrependi. Tenho quanto tempo para desistir?"
@@ -38,6 +42,16 @@ class FakeResearcher:
         )
 
 
+class NoUsers:
+    def authenticate(self, username: str, password: str) -> FirmUser | None:
+        return None
+
+
+def auth(role: Role = Role.ASSOCIADO) -> dict[str, str]:
+    token = create_access_token(User(id="u-1", name="Pessoa de Teste", role=role))
+    return {"Authorization": f"Bearer {token}"}
+
+
 def client(researcher: FakeResearcher | None = None, chunks: int | Exception = 118) -> TestClient:
     def count() -> int:
         if isinstance(chunks, Exception):
@@ -45,8 +59,8 @@ def client(researcher: FakeResearcher | None = None, chunks: int | Exception = 1
         return chunks
 
     fake = researcher or FakeResearcher()
-    app = create_app(researcher=lambda: fake, chunks=count)
-    return TestClient(app, raise_server_exceptions=False)
+    app = create_app(researcher=lambda: fake, chunks=count, users=NoUsers)
+    return TestClient(app, raise_server_exceptions=False, headers=auth())
 
 
 def test_legal_research_returns_the_verified_answer() -> None:
@@ -89,6 +103,23 @@ def test_missing_model_key_is_503() -> None:
 
     assert response.status_code == 503
     assert response.json()["type"] == "/problems/model-unavailable"
+
+
+def test_spent_budget_is_429_naming_the_limit_with_retry_after() -> None:
+    resets_at = datetime.now(UTC) + timedelta(hours=2)
+    cap = BudgetCap(BudgetWindow.DAY, 2.0)
+    fake = FakeResearcher(BudgetExceededError(cap, "dev", 2.0134, resets_at))
+
+    response = client(fake).post("/v1/legal-research", json={"question": QUESTION})
+
+    assert response.status_code == 429
+    assert response.headers["content-type"] == "application/problem+json"
+    body = response.json()
+    assert (body["type"], body["title"]) == ("/problems/budget-exceeded", "Budget exceeded")
+    assert body["detail"].startswith(
+        "The daily model budget of the dev environment is spent: US$ 2.0134 of US$ 2.00."
+    )
+    assert 7000 < int(response.headers["retry-after"]) <= 7200
 
 
 def test_unexpected_error_is_500_without_details() -> None:
@@ -143,10 +174,12 @@ def test_cpf_reaches_the_model_as_a_marker_and_comes_back_rehydrated() -> None:
     from ementa.pii import PrivateResearcher
 
     model = EchoResearcher()
-    app = create_app(researcher=lambda: PrivateResearcher(model), chunks=lambda: 1)
+    app = create_app(researcher=lambda: PrivateResearcher(model), chunks=lambda: 1, users=NoUsers)
     question = "Meu CPF é 123.456.789-09 e fui negativado sem aviso. Posso pedir indenização?"
 
-    response = TestClient(app).post("/v1/legal-research", json={"question": question})
+    response = TestClient(app, headers=auth()).post(
+        "/v1/legal-research", json={"question": question}
+    )
 
     assert response.status_code == 200
     assert "[CPF_1]" in model.questions[0]

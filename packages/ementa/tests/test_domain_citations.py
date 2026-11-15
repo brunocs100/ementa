@@ -94,3 +94,15 @@ def test_prose_sumulas_need_the_id_of_their_own_kind() -> None:
     result = verify_citations(wrong, MORE)
     assert result.text == ""
     assert result.removed[0].reference == "Súmula Vinculante 385"
+
+
+def test_without_the_prose_check_only_bracketed_ids_count() -> None:
+    answer = (
+        "O prazo vence em 26/01/2027. Só dias úteis contam (CPC, art. 219). "
+        "A Súmula 999 do STJ dobra o prazo [stj:sumula:999]."
+    )
+
+    result = verify_citations(answer, ALLOWED, check_prose=False)
+
+    assert result.text == "O prazo vence em 26/01/2027. Só dias úteis contam (CPC, art. 219)."
+    assert [r.reference for r in result.removed] == ["stj:sumula:999"]

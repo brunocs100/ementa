@@ -104,6 +104,34 @@ Copilot, Claude Desktop e Claude Code mandam o prompt do usuário e o resultado 
 
 Cada ferramenta declara a classe no registro do servidor MCP; a classe do processo, quando existe, prevalece. A auditoria grava qual cliente recebeu o quê.
 
+## Autenticação
+
+A API usa o fluxo OAuth2 de senha com JWT de curta duração. `POST /v1/auth/token` recebe usuário e senha num formulário, confere a senha em `firm.users` e devolve um token HS256 que vale 15 minutos (`EMENTA_JWT_TTL_MINUTES`). As outras rotas `/v1` pedem `Authorization: Bearer <token>`. No `/docs`, o botão Authorize faz esse login.
+
+| Caso | Resposta |
+|---|---|
+| Sem token, token vencido, assinatura errada, algoritmo diferente de HS256, papel desconhecido | 401 em RFC 9457, com `WWW-Authenticate: Bearer` |
+| Usuário ou senha errados no login | 401, com a mesma mensagem nos dois casos |
+| Papel sem permissão para a rota | 403 em RFC 9457 |
+
+- O token leva `sub` (id do usuário), `name`, `role`, `iss`, `iat` e `exp`. A rota lê só o token, sem ir ao banco. Por isso a troca de papel ou o bloqueio de um usuário só vale quando o token vence, em até 15 minutos.
+- O segredo vem de `EMENTA_JWT_SECRET`, com pelo menos 32 caracteres. Com `EMENTA_ENV=prod`, a API não sobe sem ele. Em `dev` e `ci`, cada processo sorteia um segredo, e os tokens morrem com o processo.
+- A senha fica guardada em scrypt da biblioteca padrão (N = 2^14, r = 8, p = 5, um dos conjuntos recomendados pela OWASP), com sal de 16 bytes e comparação em tempo constante. O login de usuário inexistente também paga um scrypt, para o tempo de resposta não revelar quem tem conta.
+- A resposta do login vai com `Cache-Control: no-store`.
+
+### Usuários de demonstração
+
+Pessoas fictícias, uma por papel. As senhas são públicas de propósito e servem só para a demo. `uv run ementa seed-users` grava os seis em `firm.users` e pode rodar de novo: atualiza e mantém os ids. Com `EMENTA_ENV=prod`, o comando se recusa a rodar.
+
+| Usuário | Senha | Papel | Nome |
+|---|---|---|---|
+| `socia` | `socia-demo` | Sócia | Helena Duarte |
+| `associado` | `associado-demo` | Associado | Rafael Moreira |
+| `estagiario` | `estagiario-demo` | Estagiário | Lucas Ferreira |
+| `controladoria` | `controladoria-demo` | Controladoria | Beatriz Santos |
+| `dpo` | `dpo-demo` | DPO | Camila Rocha |
+| `ti` | `ti-demo` | TI | Diego Almeida |
+
 ## Controle de acesso (RBAC)
 
 | Ação | Sócia | Associado | Estagiário | Controladoria | DPO | TI |
@@ -117,8 +145,21 @@ Cada ferramenta declara a classe no registro do servidor MCP; a classe do proces
 | Pedir esquecimento (LGPD) | Não | Não | Não | Não | Sim | Executa |
 | Mudar política e orçamento | Não | Não | Não | Não | Aprova | Sim |
 | Ler auditoria | Sim | Os seus | Não | Não | Sim | Sim |
+| Enviar documento do escritório | Sim | Sim | Sim | Sim | Não | Não |
 
 O ABAC (controle por atributo) complementa a tabela com atributos do processo: área, sigilo e membros.
+
+### A matriz no código
+
+`ementa.domain.access` guarda a tabela em código, de papel para rotas e ferramentas. O que ela não concede é negado, inclusive papel desconhecido, rota nova e ferramenta nova. A API consulta a matriz em cada rota (`authorized_user`), e os agentes consultam antes de chamar uma ferramenta (`can_use_tool(role, tool)`). Um teste falha se uma rota `/v1` responder sem token ou não tiver linha na matriz.
+
+| Concede | Sócia | Associado | Estagiário | Controladoria | DPO | TI |
+|---|---|---|---|---|---|---|
+| `POST /v1/legal-research` | Sim | Sim | Sim | Sim | Sim | Sim |
+| `GET /v1/audit/events` | Sim | Não | Não | Não | Sim | Sim |
+| Ferramentas de dado público: `legal_research`, `search_legal_corpus`, `answer_legal_question`, `get_statute_article`, `calculate_deadline`, `list_skills`, `load_skill` | Sim | Sim | Sim | Sim | Sim | Sim |
+
+`POST /v1/auth/token` é a única rota aberta. O associado ainda não lê a auditoria, porque "os seus" pede um filtro por autor que a rota não tem. Hoje toda ferramenta devolve dado público e serve a todos os papéis; a primeira ferramenta restrita entra com linha própria.
 
 ## RLS no Postgres
 
@@ -151,6 +192,15 @@ O papel da aplicação não é dono das tabelas, então não passa por cima da p
 - O motor de políticas roda antes de cada chamada a modelo: se algum trecho do contexto é `secret`, a rota vira `local` (Ollama). Sem modelo local disponível, a chamada falha com mensagem clara; nunca cai para a nuvem.
 - O atributo `ementa.policy.route` registra a rota no span; o teste da F6 falha se um contexto sigiloso gerar span de provedor de nuvem.
 
+## Documentos enviados pelo escritório (F3)
+
+- `POST /v1/documents` grava o arquivo como `restricted`, com quem enviou como dono (`owner_id`) e na lista de leitura (`acl`). Os chunks herdam o nível e a lista. O RLS que usa essas colunas chega na F6.
+- Até lá os chunks ficam em `firm_knowledge`, fora do `knowledge`: a pesquisa jurídica e as ferramentas MCP, que devolvem dado público, não alcançam documento do escritório.
+- Só quem enviou vê a tarefa; para os outros, `GET /v1/jobs/{id}` responde 404. O mesmo arquivo enviado por duas pessoas vira dois documentos, cada um com seu dono.
+- Nome do arquivo e conteúdo não vão para log, span nem mensagem de erro; o erro de uma tarefa guarda só a classe da exceção ou um motivo fixo.
+- A fila no Redis leva só ids e o contexto do trace, em JSON. O Redis do Compose escuta só em 127.0.0.1, sem senha; em outro ambiente ele precisa de senha e rede privada.
+- Limite de 2 MiB por arquivo. Corpo anunciado maior (`Content-Length`) é recusado antes de ser lido; sem esse cabeçalho, depois da leitura. Um proxy na frente da API deve limitar também. PDF é lido no worker, não na API.
+
 ## Pseudonimização
 
 ```mermaid
@@ -167,8 +217,9 @@ sequenceDiagram
     G-->>U: Resposta com o CPF real
 ```
 
-- Na F2 o cofre vive em memória, por requisição; a partir da F3 passa para o Redis com TTL curto. O valor real não vai para log nem para span.
-- Só o usuário autorizado recebe a resposta reidratada. Para cliente MCP externo, o marcador fica.
+- Na pesquisa (`/v1/legal-research` e MCP) o cofre vive em memória, por requisição. No chat (F3) ele vive no estado da conversa, no checkpointer: um mapeamento por thread, que dura o mesmo que o histórico, porque o histórico só se reidrata com ele. Um Redis com TTL curto, como estava previsto, apagaria os valores antes da conversa e deixaria o histórico com marcadores. A troca: o valor real fica em repouso no Postgres (schema `langgraph`), protegido pelo acesso ao banco, e apagar os dados de um titular precisa apagar também as threads em que ele aparece (`delete_thread` do checkpointer). O valor real não vai para log nem para span.
+- Só o usuário autorizado recebe a resposta reidratada: no chat, só quem abriu a conversa a lê de volta; para qualquer outro, a conversa não existe (404). Para cliente MCP externo, o marcador fica.
+- No streaming do chat, cada token sai reidratado. O fim do texto fica retido enquanto pode virar marcador (`[CP` antes de `F_1]`), para nenhum marcador partido chegar à tela nem escapar da reidratação; o detalhe está na [Arquitetura](ARQUITETURA.md#chat-em-sse-f3).
 - O cofre é o mapeamento de marcador para valor que `pseudonymize` devolve. O chamador o passa de volta a cada turno, e o mesmo valor mantém o marcador na conversa toda, mesmo com outra pontuação (`123.456.789-09` e `12345678909` viram `[CPF_1]`) ou, num nome, sem acento.
 - Valor já mascarado na conversa é mascarado onde aparecer de novo, inclusive onde o NER não o reconhece.
 - A reidratação aceita o marcador como o modelo costuma ecoá-lo: `[ CPF_1 ]`, `[cpf_1]`, `\[CPF\_1\]` (Markdown), `[CPF 1]` e `CPF_1`.
@@ -221,34 +272,49 @@ A aprovação guarda quem aprovou, quando e o diff entre o rascunho e a versão 
 
 ## Auditoria
 
-`audit.events` é append-only. O papel da aplicação só tem INSERT; cada linha guarda o hash da anterior, então qualquer alteração quebra a cadeia.
+`audit.events` é só de acréscimo. Cada linha guarda o hash da anterior, então alterar, apagar ou reordenar uma linha quebra a cadeia.
 
 ```sql
 CREATE TABLE audit.events (
-    id          bigserial PRIMARY KEY,
-    occurred_at timestamptz NOT NULL DEFAULT now(),
-    actor_id    uuid,
-    action      text NOT NULL,
-    payload     jsonb NOT NULL,
-    prev_hash   bytea,
+    id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    occurred_at timestamptz NOT NULL,
+    actor       text,           -- id do usuário; nulo quando ninguém se autenticou
+    action      text NOT NULL,  -- http.request
+    resource    text NOT NULL,  -- POST /v1/legal-research
+    data_class  text NOT NULL,  -- public, restricted ou secret
+    outcome     text NOT NULL,  -- ok, denied, rejected ou error
+    details     jsonb NOT NULL, -- {"status": 200, "duration_ms": 41}
+    prev_hash   bytea UNIQUE NULLS NOT DISTINCT,
     hash        bytea NOT NULL
 );
--- hash = sha256(prev_hash || occurred_at || actor_id || action || payload)
+-- hash = sha256(prev_hash || evento canônico); no primeiro evento, prev_hash é nulo e entra vazio
 ```
 
-Um job diário confere a cadeia inteira e alerta se encontrar quebra.
+- O evento canônico é o JSON do evento com as chaves em ordem, sem espaços, em UTF-8 e com a hora em UTC com microssegundos. `details` não aceita número com casa decimal: o `jsonb` reescreve números, e o hash deixaria de bater.
+- Um gatilho recusa UPDATE, DELETE e TRUNCATE, inclusive do dono da tabela. O `prev_hash` único impede que dois eventos apontem para o mesmo anterior. A escrita usa um lock consultivo (advisory lock), que não pede privilégio além de INSERT.
+- A cadeia genérica fica no kit (`ementa_kit.audit`: `AuditEvent`, `PgAuditLog`, `verify_chain`). A ligação com o escritório fica em `ementa.services.audit_log()`, na API e na CLI.
+- A API grava um evento por pedido a `/v1`, depois da resposta: quem chamou (o id do token), a rota pelo modelo do caminho, o status e a duração. Nunca o corpo, a query string ou os valores do caminho, que podem ter dado pessoal. Pedido negado, inválido ou com erro também entra. Resposta em streaming entra quando termina. Falha ao gravar vai para o log e não derruba o pedido.
+- `GET /v1/audit/events` lista os eventos do mais novo ao mais antigo, com paginação por cursor, para sócia, DPO e TI.
+- `uv run ementa audit verify` percorre a cadeia, refaz cada hash e aponta o primeiro elo quebrado, saindo com código 1. O job diário que roda esse comando e alerta na quebra fica para a operação (F7).
+
+Limites, ditos às claras:
+
+- Hoje a trilha registra os pedidos HTTP. Chamadas a modelo, ferramenta e guardrail entram com o mesmo `AuditEvent` (ação `tool.call`, por exemplo) quando os agentes passarem a gravar.
+- Em dev e no CI, a aplicação conecta como dona das tabelas, e o gatilho é a trava. Em produção, o papel da aplicação deve ter só INSERT e SELECT em `audit.events` (F6), com o schema criado pelo dono.
+- A cadeia sozinha não pega quem reescreve a tabela inteira e refaz todos os hashes, nem quem apaga só os últimos eventos. Para esses casos, guarde fora do banco o último hash que `audit verify` mostra e compare depois.
 
 ## Orçamentos e limites
 
 | Limite | Valor padrão | Ao estourar |
 |---|---|---|
-| Orçamento diário (dev e CI) | US$ 2 | Para as chamadas e avisa |
-| Orçamento mensal | US$ 30 | Para as chamadas e avisa |
+| Orçamento diário, por ambiente (`EMENTA_BUDGET_DAILY_USD`) | US$ 2 | Recusa a chamada antes do provedor (`BudgetExceededError`; na API, HTTP 429 com `Retry-After`) |
+| Orçamento mensal, por ambiente (`EMENTA_BUDGET_MONTHLY_USD`) | US$ 30 | Igual ao diário |
+| Orçamento por área de atuação (`EMENTA_BUDGET_AREAS`) | Nenhum | Igual, só para as chamadas daquela área |
 | Passos por execução de agente | 12 | Encerra com resposta parcial |
 | Tokens de entrada por chamada | Definido pelo montador de contexto | Corta a seção de menor prioridade |
 | Requisições por usuário | 30 por minuto | HTTP 429 |
 
-O limite de gasto do projeto no painel da OpenAI é a segunda trava, fora do código.
+O limite de gasto do projeto no painel da OpenAI é a segunda trava, fora do código. O aviso em 80% do teto vem com os alertas da F7.
 
 ## Red team
 
@@ -272,7 +338,7 @@ Metas: bloqueio de pelo menos 95% dos ataques, com no máximo 5% de falso positi
 | Princípios | art. 6º | Finalidade, necessidade (mínimo de dado no contexto), segurança, prevenção, transparência |
 | Bases legais | art. 7º | Execução de contrato com o cliente e exercício regular de direitos em processo; registradas por finalidade |
 | Dado sensível | art. 11 | Saúde e outros dados sensíveis marcados no documento; pseudonimizados antes da nuvem |
-| Direitos do titular | art. 18 | Endpoint de esquecimento apaga as memórias e os chunks ligados à pessoa, com teste (F3) |
+| Direitos do titular | art. 18 | `DELETE /v1/data-subjects/{id}/memories`, para DPO e TI (a matriz acima), apaga as memórias que citam a pessoa e devolve só quantas saíram, com teste (F3). Os chunks de documento ligados à pessoa entram quando houver documentos de processo |
 | Transferência internacional | art. 33 | A OpenAI processa fora do Brasil; por isso pseudonimização, `store: false` e cláusulas contratuais com o provedor (conferir regulamento da ANPD sobre transferência internacional na F6) |
 | Registro das operações | art. 37 | Registro de tratamento por agente e finalidade, gerado a partir da auditoria |
 | Encarregado | art. 41 | Papel DPO no RBAC |
@@ -280,6 +346,16 @@ Metas: bloqueio de pelo menos 95% dos ataques, com no máximo 5% de falso positi
 | Incidente | art. 48 | Runbook abaixo, com comunicação à ANPD e ao titular |
 
 Retenção: na F1 as chamadas usam Chat Completions sem `store` (o padrão é não guardar a conversa no provedor); quando a Responses API entrar, ela vai com `store: false`. A política de retenção do provedor para monitoramento de abuso continua valendo e é conferida na F6. Os dados de cliente do projeto são fictícios.
+
+### Memória e esquecimento
+
+- O escritor de memória manda ao modelo `fast` só o turno pseudonimizado (`[PESSOA_1]`, `[CPF_1]`). O valor real volta só para o store, no banco do escritório, e cada memória leva os ids dos titulares que cita. No chat ele usa o mapeamento da conversa, então o modelo vê os mesmos marcadores do turno.
+- A memória lida no chat também passa pelo guardrail antes do modelo de nuvem, com o mapeamento da conversa: o valor que já tem marcador o mantém e o novo ganha o próximo. A busca roda com o texto em claro, mas no e5 local, sem sair da máquina. O histórico devolvido ao usuário não mostra a seção de memórias.
+- Esquecer apaga a memória do store, mas não a cópia que já entrou numa conversa: a seção mascarada fica nas mensagens da thread e o valor, no mapeamento. Apagar um titular por inteiro inclui apagar essas threads, como no cofre de marcadores acima.
+- O id do titular é `ds_` mais um HMAC-SHA-256 do tipo e do valor, com a chave `EMENTA_DATA_SUBJECT_KEY`. O CPF formatado ou não dá o mesmo id. Sem a chave, o id não leva de volta ao CPF, nem testando todos. A produção não sobe o escritor sem chave própria. Trocar a chave deixa sem dono os ids já gravados: antes, é preciso reetiquetar as memórias.
+- O DPO acha os ids com `ementa.memory.data_subject_ids("Maria Souza, CPF ...")`, que devolve um id por valor achado e nunca o valor. A rota recebe só o id: um CPF no caminho é recusado com 422, e o erro não o repete, porque o `instance` é o modelo da rota, não o caminho enviado.
+- A resposta e o span do esquecimento guardam só a contagem. O evento de auditoria (quem pediu e quantas saíram) entra com a trilha de `audit.events`.
+- Limites conhecidos: a etiqueta vem do que o guardrail de PII acha no texto. O nome sozinho e o CPF são titulares distintos, então o DPO esquece por todos os identificadores que tiver. Memória que fala da pessoa sem identificá-la ("o cliente quer acordo") não leva etiqueta e fica.
 
 ## Runbook de incidente
 
