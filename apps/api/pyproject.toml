@@ -1,0 +1,24 @@
+[project]
+name = "ementa-api"
+version = "0.1.0"
+description = "REST API for the Ementa agents"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+dependencies = [
+    "ementa",
+    "ementa-kit",
+    "fastapi>=0.163",
+    "opentelemetry-instrumentation-fastapi>=0.66b2",
+    "uvicorn>=0.54",
+]
+
+[project.scripts]
+ementa-api = "ementa_api.main:main"
+
+[tool.uv.sources]
+ementa = { workspace = true }
+ementa-kit = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.13,<0.14"]
+build-backend = "uv_build"

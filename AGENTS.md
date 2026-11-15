@@ -38,7 +38,18 @@ uv run ementa ask "Posso desistir da compra online?"   # agente legal_research (
 uv run ementa smoke --retrieval-only             # 10 perguntas de fumaça, só a busca
 uv run ementa smoke                              # as 10 com o agente (cerca de US$ 0,10)
 uv run ementa-mcp                                # servidor MCP via stdio
+
+# A partir da F2
+uv run ementa ingest all --reset                 # CDC, LGPD, CPC, súmulas do STJ e do STF (cdc, lgpd, cpc, stj ou stf, um por vez)
+uv run ementa smoke --retrieval-only --file evals/legal_research.jsonl   # 30 perguntas, só a busca
+uv run ementa smoke --file evals/legal_research.jsonl --max-cost-usd 0.5 --markdown out.md   # agente, com teto
+uv run ementa-api                                # API REST em http://127.0.0.1:8000 (/docs, /v1/legal-research)
+uv run ementa-mcp --http                         # o mesmo MCP em Streamable HTTP, porta 8001
+uv run lint-imports                              # contratos de dependência entre pacotes
+uvx pre-commit install                           # uma vez por clone: ruff e higiene a cada commit
 ```
+
+A avaliação das 30 perguntas roda no GitHub Actions (`evals.yml`) com o rótulo `avaliar` no PR, toda noite ou na mão. A parte com o modelo precisa do segredo `OPENAI_API_KEY` no repositório e para no teto de custo.
 
 ## Convenções
 

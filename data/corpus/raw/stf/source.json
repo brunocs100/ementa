@@ -1,0 +1,329 @@
+{
+  "id": "stf",
+  "title": "Súmulas vinculantes do STF",
+  "statute": "Súmulas vinculantes do Supremo Tribunal Federal (Constituição, art. 103-A)",
+  "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26",
+  "format": "stf-sumulas",
+  "encoding": "utf-8",
+  "retrieved_at": "2026-11-15",
+  "sha256": "eb4aa0e4c01d1a92d3897025158cd6046acfc8be2df5f6b7289d60375f363e46",
+  "license": "Enunciado de súmula, ato oficial sem proteção de direito autoral (Lei 9.610/1998, art. 8º, IV)",
+  "selection": "As 63 páginas que a lista do STF liga, uma por súmula vinculante. O parser deixa de fora a 9, marcada cancelada no título, e a 30, pendente de publicação: ficam 61.",
+  "files": [
+    {
+      "file": "sv01.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1185",
+      "sha256": "45c2be24e8464821c73bfe32a8dfd814b95e7088a3c161fa2aedc4349a13b9cc"
+    },
+    {
+      "file": "sv02.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1188",
+      "sha256": "d5d43143e0dd74663b904b41427efb359decff11cbd5b977806a1ceb5a552bb6"
+    },
+    {
+      "file": "sv03.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1191",
+      "sha256": "14afdcf73586a8694e30355075479475eeaa58dbabd6fde753c18c6bda613f55"
+    },
+    {
+      "file": "sv04.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1195",
+      "sha256": "4222c625ab752a519619f743eb1721a7dafbd09a4f58fb7ae2ad057b4d2d90b4"
+    },
+    {
+      "file": "sv05.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1199",
+      "sha256": "ddb1c09785b378e913256739fc00f12de99ee3bcd8d708d85b98682cc2dc6827"
+    },
+    {
+      "file": "sv06.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1202",
+      "sha256": "58ada231e34b0a2c925e91f0613aa463f3447ba58414b4100eaa69477fcbc5e8"
+    },
+    {
+      "file": "sv07.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1205",
+      "sha256": "a19cc50697ffb3b02631b96e0d8abca05423ea5a6bdba65df20999c47a2c79e2"
+    },
+    {
+      "file": "sv08.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1209",
+      "sha256": "5def9b83a683e3a52d34753e9943dde1c8c1731904393feb99c55b5d8b23d259"
+    },
+    {
+      "file": "sv09.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1212",
+      "sha256": "3849746c242f79d8ee5a77acfc1c0f5b3350a0ff3c49be860af910d9cb6ac754"
+    },
+    {
+      "file": "sv10.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1216",
+      "sha256": "6772487b06eee4ee514a6a13b5ff22c1386ea5ac8b13c271643d0b9237b5c61f"
+    },
+    {
+      "file": "sv11.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1220",
+      "sha256": "a01739666f7df1d64f71e6852d4fb5c71fe98262089eb48782242a3a86a61170"
+    },
+    {
+      "file": "sv12.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1223",
+      "sha256": "bc2fd220503996063b09ce88314b9ede99b13b1d6b43b68ea3550a14957d40b4"
+    },
+    {
+      "file": "sv13.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1227",
+      "sha256": "36d7e218eab92e579fe7f99ecad9e074c16e33cc71992cfb0c1bca99b06c974b"
+    },
+    {
+      "file": "sv14.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1230",
+      "sha256": "659ee869c099f1f1455b85ad8607165ce9acc9add9e4b064b7441c2cd0526a5e"
+    },
+    {
+      "file": "sv15.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1233",
+      "sha256": "6dc35781c8d06c7d446cce0042a6a8cba7c34ea5013dd7fe76656ad16b6fb3f9"
+    },
+    {
+      "file": "sv16.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1237",
+      "sha256": "91ef5730f1417472e03121ee4ba8698509ee591429765152328148364acdd5fa"
+    },
+    {
+      "file": "sv17.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1241",
+      "sha256": "32279be88f25924020706dda659da09f89173c98858c2a8427cb3b51a1f66c21"
+    },
+    {
+      "file": "sv18.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1245",
+      "sha256": "d33e4d8aebb3a4db63fc2f92a72231c58e5c0ba34d0cbcaec7026aa624f73192"
+    },
+    {
+      "file": "sv19.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1248",
+      "sha256": "85fe0c675536548bd8272001a2531b12ee06e01d9084a0d469a109986cfc6502"
+    },
+    {
+      "file": "sv20.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1252",
+      "sha256": "140e35efdccd49cb43df427b429eb0d130403767bef7fa03c9b3762e787933c5"
+    },
+    {
+      "file": "sv21.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1255",
+      "sha256": "42084476642f11c0289c023de6c0d0308687d81aa75e0a8df451965473920b61"
+    },
+    {
+      "file": "sv22.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1259",
+      "sha256": "b96ba1df1f6605099c223bf6ccb9d57482a4a7474a01575278656249ed01af85"
+    },
+    {
+      "file": "sv23.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1262",
+      "sha256": "13d7eff6a17023dfea038517b3e79f59729d6d661afe98d0fdcea1157dcd933e"
+    },
+    {
+      "file": "sv24.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1265",
+      "sha256": "4a69f1a9f47186e23a1507bf8931032419937538d23bee17d7fdcae956a02ef6"
+    },
+    {
+      "file": "sv25.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1268",
+      "sha256": "bc86006e17122d1adbcb84afabff011071c4d7aa66f1fdfb642aa303fefe8861"
+    },
+    {
+      "file": "sv26.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1271",
+      "sha256": "1462830b12a68fa1f04c97f3f5819eae3b11fe448bca18c61c2503bf5ef3a8dd"
+    },
+    {
+      "file": "sv27.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1274",
+      "sha256": "126ca9f9631ecd2a4b858b51f98703998886d34ca91947b5912b089d6e1524eb"
+    },
+    {
+      "file": "sv28.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1278",
+      "sha256": "4b88b79b84651b0049302024c56dabbe02f28df160fd16e9401a65144bf94d16"
+    },
+    {
+      "file": "sv29.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1282",
+      "sha256": "2ceac29c372934d9a35fdb8af3074a41b0dc2914c93ef2cebcee000df975a77a"
+    },
+    {
+      "file": "sv30.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=5780",
+      "sha256": "df97870e7d24639a2e37f4c370f8f2318e456ed8793fcb8397da3fa4f5ce1bb0"
+    },
+    {
+      "file": "sv31.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1286",
+      "sha256": "2ce751dca9db1aa1d1018ee8064d19884ecabdc102e8cb486de6c9a0a1ff4406"
+    },
+    {
+      "file": "sv32.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1289",
+      "sha256": "45fcce94e2faffe38c93773a2190cb634bbdaede4a568e8a55105ef08dff7ee4"
+    },
+    {
+      "file": "sv33.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1941",
+      "sha256": "7b92d0b9a84e3b4875f731e326a78a2a748f2c5bc847d5929c732a77948a8c71"
+    },
+    {
+      "file": "sv34.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1947",
+      "sha256": "a0ce2cc4bc0416fe08505079fd2d29b85c97d65da258ca949ddda6d02a041c86"
+    },
+    {
+      "file": "sv35.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1953",
+      "sha256": "295133b5a7f607d13cef68e1216faf9dc2c30c3564673f4e74ad1c489cd7f6a4"
+    },
+    {
+      "file": "sv36.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1957",
+      "sha256": "66e75fdd9241cc3b1f1649f5aa1e74f1c69fdba92b7a07c03fe226b903345185"
+    },
+    {
+      "file": "sv37.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=1961",
+      "sha256": "732bd6f04ec67a463f986571166af76034e2537b2e115f7f2dd9f1ea84e137c3"
+    },
+    {
+      "file": "sv38.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2183",
+      "sha256": "7e59d497d57857a285481b4b532879d63dc0c6b56bb6ff7c508bad8759d4bb2e"
+    },
+    {
+      "file": "sv39.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2197",
+      "sha256": "386653cdd13100ff4a92ab627ffbb14b87709570713b2d32e0b53a38f6969351"
+    },
+    {
+      "file": "sv40.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2204",
+      "sha256": "cc20942fd571503dd51653022087335b1b343fa4efb24866e6ba2ae13c52bb7e"
+    },
+    {
+      "file": "sv41.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2218",
+      "sha256": "520def82d2237fc5d09075d1a37e5ef561bf326f7c688f7b223a69b3668f8dc4"
+    },
+    {
+      "file": "sv42.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2222",
+      "sha256": "edc6a7f3bd3ef3338aee36e7d671ac02595b229a08023bc5a318d9e721fb98d9"
+    },
+    {
+      "file": "sv43.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2348",
+      "sha256": "4c582fe1202c7e31e5f07321a2f7141f4b299e4520ad35111e33ea4a3517f5cc"
+    },
+    {
+      "file": "sv44.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2358",
+      "sha256": "3ccfc171716f22092b67fcea36a1b8eedc5989f4b56581d04c8a8518c69739a6"
+    },
+    {
+      "file": "sv45.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2362",
+      "sha256": "e282b2f28311b473389f48c6eaa3c138a39767ade8500e9f2f0932f5e837828c"
+    },
+    {
+      "file": "sv46.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2368",
+      "sha256": "2b0f126e92b899fc711eadebfa1a31a3c24dcb3798002ab1c53e4fb285e738b4"
+    },
+    {
+      "file": "sv47.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2504",
+      "sha256": "addcab735169c00b93a117ce7dfc8274a3f12428d45400577cdd5d459febe850"
+    },
+    {
+      "file": "sv48.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2505",
+      "sha256": "31a85f7085ff4b38b2196bf0b29e88a1ba8146b8ce36f76051fccb547f5ba312"
+    },
+    {
+      "file": "sv49.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2506",
+      "sha256": "d2e1417db19bbb0f4513acbbc67933d21c9b30a227a7e863e3f83ee9b705f4e6"
+    },
+    {
+      "file": "sv50.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2604",
+      "sha256": "fde2c4002718261db32fadf7560c05304728a09b3a143ccf09853ec4861abd4e"
+    },
+    {
+      "file": "sv51.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2607",
+      "sha256": "8a283a41a9c52ff3c4d65b2d4c5d96acb29381014e4f85803d99843c6c901ad2"
+    },
+    {
+      "file": "sv52.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2610",
+      "sha256": "6b864e216944a108ba8b418c2a9c851d058a3c151af12dcbb21cc4560019f08b"
+    },
+    {
+      "file": "sv53.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=2613",
+      "sha256": "a6073185677d83dcac99e757ef5c73e81e0c3a4aa02bb619e38dd41a7e1ecc22"
+    },
+    {
+      "file": "sv54.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=3009",
+      "sha256": "9b31a727c6357117b18f5e6b8808fa828fcb75ee83f6bc88de7107d6f8e1d38c"
+    },
+    {
+      "file": "sv55.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=3014",
+      "sha256": "3d964d8b59983eef1accb5f7d46359666667759e5fc873302141c64af728c007"
+    },
+    {
+      "file": "sv56.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=3352",
+      "sha256": "ef62ee55d8972a800c599737c912367556d43dfc5eb5672b417dfbf477c05b27"
+    },
+    {
+      "file": "sv57.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=5966",
+      "sha256": "8367e705804a2b5d4317f3caa4262be5fe19c3371a9ae2a0d3760d21806e369c"
+    },
+    {
+      "file": "sv58.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=5973",
+      "sha256": "a47c3dad656395a8ea4ab428a6a648d6dac409d804a4a670ff072783255f337f"
+    },
+    {
+      "file": "sv59.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=8161",
+      "sha256": "a849d7f2979d6d021cb94cac64ea4f262667199ca6d7a847de6bead5a6f94cc1"
+    },
+    {
+      "file": "sv60.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=9260",
+      "sha256": "b370900a6cc9f1fe4d931f2189cde521706af827a1c679b49bb855f329171c54"
+    },
+    {
+      "file": "sv61.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=9296",
+      "sha256": "a9d198b52390fb88d2d99316ce2decd5742e0637037ef70255b9646da0f91053"
+    },
+    {
+      "file": "sv62.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=9347",
+      "sha256": "10ad1741db5717f136aa18f7725c43194ca4e5bc9e0b499d02fa43fe1f535fd7"
+    },
+    {
+      "file": "sv63.htm",
+      "url": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26&sumula=9519",
+      "sha256": "d4938ce2988bacecdd40a53ff6bf3c5f72b8c803f1105dc4b810c04cc9311c85"
+    }
+  ]
+}

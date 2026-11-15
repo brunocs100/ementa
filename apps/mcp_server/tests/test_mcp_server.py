@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 import anyio
@@ -16,7 +17,7 @@ def call(name: str, arguments: dict[str, Any]) -> Any:
     return anyio.run(scenario)
 
 
-def test_server_lists_the_f1_tools() -> None:
+def test_server_lists_the_tools() -> None:
     async def scenario() -> list[str]:
         async with Client(build_server()) as client:
             tools = await client.list_tools()
@@ -26,6 +27,8 @@ def test_server_lists_the_f1_tools() -> None:
         "answer_legal_question",
         "calculate_deadline",
         "get_statute_article",
+        "list_skills",
+        "load_skill",
         "search_legal_corpus",
     ]
 
@@ -70,9 +73,34 @@ def test_get_statute_article_returns_the_official_text() -> None:
     assert data["url"].startswith("https://www.planalto.gov.br/")
 
 
+def test_get_statute_article_returns_cpc_and_lgpd_provisions() -> None:
+    cpc = call("get_statute_article", {"source_id": "cpc:art1003:p5"}).structured_content
+    lgpd = call("get_statute_article", {"source_id": "lgpd:art65:I-A"}).structured_content
+
+    assert cpc["article_id"] == "cpc:art1003"
+    assert cpc["statute"] == "Lei nº 13.105, de 16 de março de 2015"
+    assert "15 (quinze) dias" in cpc["provision_text"]
+    assert cpc["text"].startswith("Art. 1.003.")
+    assert lgpd["provision_text"].startswith("dia 1º de agosto de 2021")
+
+
+def test_get_statute_article_returns_sumulas() -> None:
+    stj = call("get_statute_article", {"source_id": "stj:sumula:385"}).structured_content
+    stf = call("get_statute_article", {"source_id": "stf:sv:13"}).structured_content
+
+    assert stj["article_id"] == "stj:sumula:385"
+    assert stj["provision_text"].startswith("Da anotação irregular em cadastro")
+    assert stj["text"].startswith("Súmula 385 do STJ: Da anotação irregular")
+    assert stj["url"].startswith("https://processo.stj.jus.br/SCON/")
+    assert stf["title"] == "Súmulas vinculantes do STF"
+    assert stf["url"].endswith("sumariosumulas.asp?base=26&sumula=1227")
+
+
 def test_get_statute_article_reports_unknown_ids() -> None:
     assert call("get_statute_article", {"source_id": "cdc:art999"}).is_error
-    assert call("get_statute_article", {"source_id": "stj:sumula:385"}).is_error
+    assert call("get_statute_article", {"source_id": "stj:sumula:9999"}).is_error
+    assert call("get_statute_article", {"source_id": "stf:sv:9"}).is_error  # cancelled
+    assert call("get_statute_article", {"source_id": "stj:sumula"}).is_error  # bad id
 
 
 HIT = Hit(
@@ -139,3 +167,66 @@ def test_answer_legal_question_returns_verified_citations_and_notice() -> None:
 
 def test_answer_legal_question_validates_the_question() -> None:
     assert call_with_fakes("answer_legal_question", {"question": "oi"}).is_error
+
+
+def test_list_skills_shows_only_name_and_description() -> None:
+    result = call("list_skills", {})
+
+    assert not result.is_error
+    data = result.structured_content
+    assert [s["name"] for s in data["skills"]] == ["deadline-calculation", "legal-research"]
+    assert all(set(s) == {"name", "description"} for s in data["skills"])
+    assert data["data_class"] == "public"
+
+
+def test_load_skill_returns_the_instructions() -> None:
+    result = call("load_skill", {"name": "deadline-calculation"})
+
+    assert not result.is_error
+    data = result.structured_content
+    assert data["name"] == "deadline-calculation"
+    assert data["instructions"].startswith("# Cálculo de prazo")
+    assert "calculate_deadline" in data["instructions"]
+
+
+def test_load_skill_reports_unknown_skills_and_rejects_bad_names() -> None:
+    unknown = call("load_skill", {"name": "contract-review"})
+
+    assert unknown.is_error
+    assert (
+        "Skill desconhecida: contract-review. Disponíveis: deadline-calculation, legal-research."
+        in unknown.content[0].text
+    )
+    assert call("load_skill", {"name": "../legal-research"}).is_error
+
+
+def schema_fields(schema: Any) -> set[str]:
+    """Every property name in a JSON schema, nested ones included."""
+    if isinstance(schema, dict):
+        return set(schema.get("properties", {})).union(*map(schema_fields, schema.values()))
+    if isinstance(schema, list):
+        return set().union(*map(schema_fields, schema))
+    return set()
+
+
+def test_skills_mention_only_tools_and_fields_that_exist() -> None:
+    async def scenario() -> tuple[set[str], list[str]]:
+        async with Client(build_server()) as client:
+            tools = (await client.list_tools()).tools
+            known = {t.name for t in tools} | schema_fields(
+                [[t.input_schema, t.output_schema] for t in tools]
+            )
+            texts = []
+            for skill in (await client.call_tool("list_skills", {})).structured_content["skills"]:
+                loaded = await client.call_tool("load_skill", {"name": skill["name"]})
+                texts += [
+                    loaded.structured_content["description"],
+                    loaded.structured_content["instructions"],
+                ]
+            return known, texts
+
+    known, texts = anyio.run(scenario)
+    mentioned = {m for text in texts for m in re.findall(r"\b[a-z]+(?:_[a-z]+)+\b", text)}
+
+    assert {"answer_legal_question", "calculate_deadline", "start_date"} <= mentioned
+    assert mentioned <= known, f"not a tool or field of the server: {sorted(mentioned - known)}"

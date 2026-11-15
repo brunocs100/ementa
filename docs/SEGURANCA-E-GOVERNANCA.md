@@ -169,7 +169,35 @@ sequenceDiagram
 
 - Na F2 o cofre vive em memória, por requisição; a partir da F3 passa para o Redis com TTL curto. O valor real não vai para log nem para span.
 - Só o usuário autorizado recebe a resposta reidratada. Para cliente MCP externo, o marcador fica.
-- CPF e CNPJ passam pela validação do dígito verificador para reduzir falso positivo.
+- O cofre é o mapeamento de marcador para valor que `pseudonymize` devolve. O chamador o passa de volta a cada turno, e o mesmo valor mantém o marcador na conversa toda, mesmo com outra pontuação (`123.456.789-09` e `12345678909` viram `[CPF_1]`) ou, num nome, sem acento.
+- Valor já mascarado na conversa é mascarado onde aparecer de novo, inclusive onde o NER não o reconhece.
+- A reidratação aceita o marcador como o modelo costuma ecoá-lo: `[ CPF_1 ]`, `[cpf_1]`, `\[CPF\_1\]` (Markdown), `[CPF 1]` e `CPF_1`.
+
+| Entidade | Marcador | Como é achada |
+|---|---|---|
+| CPF | `[CPF_1]` | Dígito verificador; na máscara oficial (`000.000.000-00`), mascarado mesmo com o dígito errado |
+| CNPJ | `[CNPJ_1]` | Mesma regra, numérico ou alfanumérico (emitido desde julho de 2026) |
+| RG | `[RG_1]` | Número logo depois de "RG", "R.G.", "registro geral" ou "identidade" |
+| Telefone | `[TELEFONE_1]` | Com DDD, conferido no plano de numeração (biblioteca phonenumbers); sem DDD, só depois de "telefone", "celular", "fone" ou "whatsapp" |
+| CEP | `[CEP_1]` | `00000-000` ou `00.000-000`; oito dígitos seguidos só depois de "CEP" |
+| E-mail | `[EMAIL_1]` | Padrão |
+| Nome | `[PESSOA_1]` | NER do spaCy (`pt_core_news_md`); trecho em maiúsculas, como a qualificação das partes, vai ao NER em formato de título |
+| OAB | `[OAB_1]` | "OAB/RS 123.456", "OAB nº 12.345/RS"; reconhecedor do pacote `ementa` |
+
+Dígito verificador errado: na máscara oficial, o número é mascarado; sem máscara, não. O formato `000.000.000-00` só serve a CPF, e um dígito trocado ainda identifica a pessoa; mascarar por engano custa pouco. Já onze dígitos soltos podem ser celular com DDD, CNH, PIS ou protocolo, e o dígito verificador é o que separa o CPF desse ruído.
+
+Exceções (lista testada): detecção que cai inteira dentro de uma delas é descartada.
+
+| Onde | Exceções |
+|---|---|
+| Kit | Datas, valores em dinheiro, marcadores já escritos, siglas de documento ("CPF") e tratamentos ("Dra.") |
+| `ementa` | Número CNJ, leis, artigos e parágrafos, súmulas, ids de fonte (`cdc:art49`), siglas de código e tribunal ("CPC", "STJ"), turmas e papéis processuais ("Réu", "Relator") |
+
+Os números das exceções têm tamanho limitado (lei com até cinco dígitos), então um CPF escrito depois de "Lei" ou "art." continua mascarado. Detecções sobrepostas viram um marcador só, sobre as duas, para nenhum pedaço do valor sobrar em claro.
+
+O span `guardrail pii` registra a etapa, a decisão (`mask` ou `allow`) e a contagem por tipo (`ementa.pii.count.cpf`, `ementa.pii.total`); nunca valor nem marcador.
+
+Modelo de NER: em 51 frases jurídicas fictícias com 33 nomes, já com o formato de título nas maiúsculas, o `sm` (13 MB) achou 28 nomes, com precisão de 0,82; o `md` (42 MB), 31, com 0,89; o `lg` (568 MB), 33, com 0,87. Fica o `md`: o `sm` perde nomes incomuns ("Thaynara", "Kauã") e o `lg` acha dois nomes a mais com 13 vezes o download. O `md` ainda perde primeiro nome sozinho em algumas frases ("Ligue para a Patrícia amanhã"); o nome já visto na conversa é mascarado mesmo assim, e CPF, CNPJ e os demais padrões não dependem do NER.
 
 ## Verificação de citações
 

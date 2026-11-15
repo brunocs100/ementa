@@ -37,7 +37,10 @@ Atributos próprios do projeto:
 | `ementa.prompt.version` | string | `1.2.0` |
 | `ementa.policy.route` | string | `cloud` ou `local` |
 | `ementa.guardrail.decision` | string | `allow`, `flag`, `mask`, `block` |
-| `ementa.context.section_tokens` | evento com mapa | `{"system": 900, "sources": 3100, "question": 120}` |
+| `ementa.guardrail.stage` | string | `input` ou `output` |
+| `ementa.pii.count.<tipo>` | int | `ementa.pii.count.cpf = 2`, um atributo por tipo achado |
+| `ementa.pii.total` | int | `4`, valores trocados por marcador na chamada |
+| `ementa.context.section_tokens` | evento no span corrente (`invoke_agent`), com `<seção>.chars` e `<seção>.tokens` (aproximado, 4 caracteres por token) | `{"system.chars": 1245, "system.tokens": 312, "fontes.tokens": 3100, "pergunta.tokens": 14, ...}` |
 | `ementa.case.pseudo_id` | string | Hash do id do processo, nunca o número real |
 
 As chamadas à OpenAI usam a instrumentação oficial (`opentelemetry-instrumentation-openai-v2` 2.4b0, que cobre Chat Completions e embeddings; a Responses API não é coberta, por isso a F1 usa Chat Completions). FastAPI, httpx e psycopg entram com instrumentação automática.
@@ -111,7 +114,7 @@ Os dashboards ficam versionados em `infra/grafana/` e sobem junto com o containe
 
 ## Custo
 
-- Tabela de preço por modelo versionada no repo (`ementa_kit/llm/prices.yaml`), com data da última conferência.
+- Tabela de preço por modelo versionada no repo (`ementa_kit/llm/prices.toml`), com data da última conferência.
 - Custo por chamada = tokens de entrada sem cache × preço de entrada + tokens em cache × preço de cache + tokens de saída × preço de saída.
 - O span `chat` grava o custo; o `invoke_agent` soma; a métrica `ementa_cost_usd_total` agrega por modelo, agente, área e rota. O custo por advogado sai do trace (atributo do usuário), não de rótulo de métrica.
 - Referência: cerca de US$ 0,015 por pergunta de pesquisa e US$ 0,75 por rodada de avaliação; teto de US$ 2 por dia e US$ 30 por mês.
@@ -137,7 +140,7 @@ models:
 2. Abra a cascata e veja qual span domina o tempo.
 3. No `retrieval`, confira os ids das fontes: a resposta certa estava entre elas?
 4. No `guardrail` de citações, veja o que foi removido e por quê.
-5. No `chat`, confira modelo, versão do prompt, tokens, cache e o evento `ementa.context.section_tokens`: alguma seção estourou o orçamento?
+5. No `chat`, confira modelo, versão do prompt, tokens e cache; no `invoke_agent`, o evento `ementa.context.section_tokens`: alguma seção estourou o orçamento?
 6. Pule para os logs pelo `trace_id` para ver exceções.
 7. Se for problema de qualidade, transforme o caso em pergunta do dataset (ver [Avaliação](AVALIACAO.md)).
 

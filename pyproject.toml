@@ -3,7 +3,7 @@ name = "ementa-workspace"
 version = "0.0.0"
 description = "Workspace root for the Ementa monorepo"
 requires-python = ">=3.12,<3.13"
-dependencies = ["ementa-kit", "ementa", "ementa-mcp"]
+dependencies = ["ementa-kit", "ementa", "ementa-mcp", "ementa-api"]
 
 [tool.uv]
 package = false
@@ -15,13 +15,17 @@ members = ["packages/*", "apps/*"]
 ementa-kit = { workspace = true }
 ementa = { workspace = true }
 ementa-mcp = { workspace = true }
+ementa-api = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28",
     "hypothesis>=6.140",
+    "import-linter>=2.16",
     "mypy>=1.18",
     "pytest>=8.4",
     "ruff>=0.14",
+    "types-pyyaml>=6.0",
 ]
 
 [tool.ruff]
@@ -36,15 +40,11 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 "packages/ementa/src/ementa/ingest/*.py" = ["RUF001"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["ementa", "ementa_kit", "ementa_mcp"]
+known-first-party = ["ementa", "ementa_api", "ementa_kit", "ementa_mcp"]
 
 [tool.mypy]
 python_version = "3.12"
-warn_unused_configs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-check_untyped_defs = true
-disallow_untyped_defs = true
+strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "apps"]
@@ -53,3 +53,38 @@ markers = [
     "integration: needs Postgres or another service",
     "eval: calls a real model and spends API budget",
 ]
+
+[tool.importlinter]
+root_packages = ["ementa_kit", "ementa", "ementa_mcp", "ementa_api"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "The kit does not depend on the legal domain or on the apps"
+type = "forbidden"
+source_modules = ["ementa_kit"]
+forbidden_modules = ["ementa", "ementa_mcp", "ementa_api"]
+
+[[tool.importlinter.contracts]]
+name = "Domain rules are pure: no infrastructure, models or frameworks"
+type = "forbidden"
+source_modules = ["ementa.domain"]
+forbidden_modules = [
+    "ementa_kit",
+    "ementa.agents",
+    "ementa.ingest",
+    "ementa.knowledge",
+    "ementa.services",
+    "ementa.tools",
+    "fastapi",
+    "langchain_core",
+    "langchain_openai",
+    "langgraph",
+    "mcp",
+    "openai",
+    "psycopg",
+]
+
+[[tool.importlinter.contracts]]
+name = "Apps do not import each other"
+type = "independence"
+modules = ["ementa_mcp", "ementa_api"]

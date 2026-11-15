@@ -2,7 +2,7 @@
 
 As fases F0 a F10 da Ementa, cada uma com objetivo, entregas, tarefas, critérios de aceite, testes, competências cobertas, estimativa e riscos.
 
-**Status:** F0 e F1 prontas (Marco 1); F2 a F10 planejadas · **Ver também:** [Resumo](RESUMO.md), [Arquitetura](ARQUITETURA.md), [Agentes](AGENTES.md), [Competências](COMPETENCIAS.md)
+**Status:** F0, F1 (Marco 1) e F2 prontas; F3 a F10 planejadas · **Ver também:** [Resumo](RESUMO.md), [Arquitetura](ARQUITETURA.md), [Agentes](AGENTES.md), [Competências](COMPETENCIAS.md)
 
 ## Objetivo e critério de sucesso
 
@@ -177,17 +177,19 @@ flowchart LR
 
 **Tarefas:**
 
-- [ ] Parsers de LGPD, CPC e súmulas, com ids `lgpd:art7`, `cpc:art219`, `stj:sumula:385`
-- [ ] Cross-encoder multilíngue local para rerank (top 8)
-- [ ] Presidio com reconhecedores de CPF e CNPJ (dígito verificador), RG, OAB, telefone, CEP, e-mail e NER em português; troca por marcador e reidratação
-- [ ] `ementa_kit.skills` com divulgação progressiva e `load_skill`; scripts só da lista permitida
-- [ ] Transporte HTTP do MCP (spec 2026-07-28, sem estado) e classe de dado por ferramenta
-- [ ] Política de saída: pseudonimiza o restrito, nega o sigiloso, registra o cliente
-- [ ] FastAPI mínima com `POST /v1/legal-research` e erros no formato RFC 9457
-- [ ] `evals/legal_research.jsonl` com 30 perguntas e `evals.yml` com o rótulo `avaliar`
-- [ ] Registro de prompts (id, versão, changelog) e eventos de tamanho por seção do contexto
-- [ ] Teste que compara pedidos consecutivos ao modelo e falha se o prefixo mudar
-- [ ] mypy strict, contratos do import-linter, pre-commit, gitleaks e pip-audit no CI
+- [x] Parsers de LGPD, CPC e súmulas, com ids `lgpd:art7`, `cpc:art219`, `stj:sumula:385`
+- [x] Cross-encoder multilíngue local para rerank (top 8)
+- [x] Presidio com reconhecedores de CPF e CNPJ (dígito verificador), RG, OAB, telefone, CEP, e-mail e NER em português; troca por marcador e reidratação
+- [x] `ementa_kit.skills` com divulgação progressiva e `load_skill`; scripts só da lista permitida
+- [x] Transporte HTTP do MCP (spec 2026-07-28, sem estado) e classe de dado por ferramenta
+- [x] Política de saída: pseudonimiza o restrito, nega o sigiloso, registra o cliente
+- [x] FastAPI mínima com `POST /v1/legal-research` e erros no formato RFC 9457
+- [x] `evals/legal_research.jsonl` com 30 perguntas e `evals.yml` com o rótulo `avaliar`
+- [x] Registro de prompts (id, versão, changelog) e eventos de tamanho por seção do contexto
+- [x] Teste que compara pedidos consecutivos ao modelo e falha se o prefixo mudar
+- [x] mypy strict, contratos do import-linter, pre-commit, gitleaks e pip-audit no CI
+
+**Status:** pronta em 15/11/2026, no PR #5. Conferido: com o corpus inteiro (CDC, LGPD, CPC completo, 72 súmulas do STJ sobre consumo e 61 súmulas vinculantes do STF, de fontes oficiais com hash), as 30 perguntas dão recall@5 de 1,00, top 1 em 27 e MRR@5 de 0,94 só com a busca; sem o rerank eram 0,87 de recall@5. Com o agente, a citação esperada aparece em 30 de 30, nenhuma citação é removida e a rodada custa US$ 0,15 (cerca de US$ 0,005 por pergunta, medido pelos spans). O CI roda a avaliação com o rótulo `avaliar` e comenta a tabela no PR; a parte com o modelo espera o segredo `OPENAI_API_KEY` no repositório. O CPF digitado na API chega ao modelo como `[CPF_1]` e volta reidratado; uma ferramenta marcada como sigilosa é negada ao cliente MCP. Decisões: rerank `mmarco-mMiniLMv2-L12` ([ADR 0010](adr/0010-embeddings-e-rerank-locais.md)), Presidio com spaCy `pt_core_news_md` e regras de exceção jurídicas ([segurança](SEGURANCA-E-GOVERNANCA.md)), CPC inteiro em vez de só os artigos de prazo, e preços em `prices.toml`, conferidos na página oficial.
 
 **Critérios de aceite:** recall@5 ≥ 0,85 nas 30 perguntas; CPF digitado na API chega ao modelo como `[CPF_1]` e volta reidratado para o usuário autorizado; ferramenta marcada como sigilosa nega cliente MCP externo; a avaliação comenta a tabela no PR e respeita o teto de custo; o teste do prefixo passa.
 

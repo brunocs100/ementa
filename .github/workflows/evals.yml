@@ -1,0 +1,92 @@
+name: evals
+
+# The 30 golden questions. Retrieval runs on every trigger and costs nothing; the agent run calls
+# the real model, stops at the cost ceiling and needs the OPENAI_API_KEY secret.
+# Triggers: the `avaliar` label on a pull request, every night, or by hand.
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+  schedule:
+    - cron: "0 6 * * *" # 03:00 in Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  legal-research:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'avaliar')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg17
+        env:
+          POSTGRES_USER: ementa
+          POSTGRES_PASSWORD: ementa
+          POSTGRES_DB: ementa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ementa -d ementa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      EMENTA_ENV: ci
+      EMENTA_OTEL_ENABLED: "false"
+      EMENTA_DATABASE_URL: postgresql://ementa:ementa@localhost:5432/ementa
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.fastembed
+      EVAL_FILE: evals/legal_research.jsonl
+      EVAL_MAX_COST_USD: "0.50"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - name: Cache the local embedding and rerank models
+        uses: actions/cache@v6
+        with:
+          path: .fastembed
+          key: fastembed-${{ hashFiles('packages/ementa-kit/src/ementa_kit/config/settings.py') }}
+      - run: uv sync --locked
+      - name: Ingest the corpus
+        run: uv run ementa ingest all --reset
+      - name: Retrieval (no model calls)
+        run: >
+          uv run ementa smoke --file "$EVAL_FILE" --retrieval-only
+          --report retrieval.json --markdown retrieval.md --min-recall 0.85
+      - name: Agent with the real model, up to the cost ceiling
+        if: env.OPENAI_API_KEY != ''
+        run: >
+          uv run ementa smoke --file "$EVAL_FILE"
+          --max-cost-usd "$EVAL_MAX_COST_USD" --report agent.json --markdown agent.md
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo "## Avaliação: ${EVAL_FILE}"
+            [ -f retrieval.md ] && cat retrieval.md
+            if [ -f agent.md ]; then cat agent.md; else echo "Agente não rodou: falta o segredo OPENAI_API_KEY."; fi
+          } > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Comment on the pull request
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file report.md --edit-last --create-if-none
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: evals
+          path: |
+            retrieval.json
+            agent.json
+            report.md
+          if-no-files-found: ignore
