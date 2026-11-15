@@ -1,0 +1,389 @@
+# Playbook fictício de um escritório fictício, escrito para a avaliação da Ementa.
+#
+# Regras (rules) são conferidas por código, sem modelo: padrões sobre o texto da cláusula, sem
+# acento e em minúsculas (all: todos; any: pelo menos um; none: nenhum) e, em algumas, um número
+# acima de um limite perto de uma palavra (above). Critérios (criteria) pedem julgamento e vão ao
+# modelo `fast`, que só vê a cláusula pseudonimizada.
+#
+# Cada item cita o texto literal do CDC ou de súmulas do STJ que estão no corpus
+# (data/corpus/raw), pelo id de fonte. A redação sugerida (redline) é a posição do escritório,
+# não lei; vazia, ela tira o trecho.
+id: consumer-services
+version: 1
+title: Contratos de consumo de serviços
+scope: >-
+  Contratos de adesão de serviços ao consumidor pessoa física: academias, cursos, internet e TV,
+  planos de saúde e odontológicos, serviços residenciais e estacionamentos.
+
+rules:
+  - id: limitacao-de-responsabilidade
+    title: Exclui ou limita a responsabilidade do fornecedor
+    severity: alta
+    basis: [cdc:art51:I, cdc:art25]
+    why: >-
+      São nulas as cláusulas que impossibilitem, exonerem ou atenuem a responsabilidade do
+      fornecedor por vícios de qualquer natureza dos serviços [cdc:art51:I]. O contrato também
+      não pode impossibilitar, exonerar ou atenuar a obrigação de indenizar [cdc:art25].
+    redline: >-
+      A CONTRATADA responde pelos danos causados ao CONTRATANTE por defeitos na prestação dos
+      serviços e pelos vícios dos serviços, na forma da lei.
+    match:
+      any:
+        - 'nao se responsabiliza'
+        - 'nao (?:sera|serao|podera|poderao) ser responsabilizad'
+        - 'isent[ao]s?(?:-se)? de (?:qualquer|toda|quaisquer) responsabilidade'
+        - 'exime-se|eximindo-se|fica(?:m)? eximid'
+        - 'nao respond(?:e|era|erao|em) (?:por|pel)'
+        - '(?:nenhuma|exclui\w*|afasta\w*) (?:a |qualquer |toda )?responsabilidade'
+        - '(?:responsabilidade|indenizacao|ressarcimento)[^.;]{0,60}(?:limitad|restrit)\w* (?:a|ao)\b'
+        - 'em nenhuma hipotese[^.;]{0,60}(?:indeniz|ressarc|responsabiliz|respond)'
+
+  - id: transferencia-de-responsabilidade
+    title: Transfere a terceiros a responsabilidade do fornecedor
+    severity: alta
+    basis: [cdc:art51:III]
+    why: >-
+      São nulas as cláusulas que transfiram responsabilidades a terceiros [cdc:art51:III].
+    redline: >-
+      A CONTRATADA responde perante o CONTRATANTE pelos serviços prestados pelos parceiros e
+      terceiros que contratar, sem prejuízo do seu direito de regresso contra eles.
+    match:
+      any:
+        - 'responsabilidade (?:sera |e |fica |ficara )?(?:exclusiva|integral|unica|inteira)[^.;]{0,40}d[aoe]s? (?:empresas? |prestadoras? |profissionais? )?(?:parceir|terceir|fabricante|plataforma|prestador|credenciad|instrutor|manobrist|operadora de pagamento)'
+        - '(?:cabe|cabera|compete|competira|incumbe) (?:exclusivamente |unicamente )?(?:a|ao|aos|as) (?:empresas? )?(?:parceir|terceir|fabricante|prestador|credenciad)[^.;]{0,80}(?:respon|indeniz|ressarc)'
+        - 'transfer\w*[^.;]{0,40}responsabilidade'
+
+  - id: sem-reembolso
+    title: Tira do consumidor o reembolso do que já pagou
+    severity: alta
+    basis: [cdc:art51:II, cdc:art20:II, cdc:art49:pu]
+    why: >-
+      São nulas as cláusulas que subtraiam ao consumidor a opção de reembolso da quantia já paga,
+      nos casos previstos no CDC [cdc:art51:II]. Entre esses casos estão a restituição imediata
+      da quantia paga pelo serviço com vício [cdc:art20:II] e a devolução do que foi pago no
+      prazo de reflexão [cdc:art49:pu].
+    redline: >-
+      Os valores pagos serão restituídos ao CONTRATANTE, monetariamente atualizados, nos casos
+      previstos no Código de Defesa do Consumidor.
+    match:
+      any:
+        - 'nao (?:havera|ha|cabera|cabe|tera|terao) (?:direito a |qualquer |nenhuma )?(?:devolucao|reembolso|restituicao|estorno)'
+        - '(?:nao|nunca|jamais) (?:sera|serao) (?:devolvid|reembolsad|restituid|estornad)'
+        - 'em nenhuma hipotese (?:sera|serao) (?:devolvid|reembolsad|restituid|estornad)'
+        - 'sem (?:direito a |qualquer )?(?:devolucao|reembolso|restituicao|estorno)'
+        - 'perd\w* (?:dos|das|de todos os|de todas as|do|da|de) (?:valores?|quantias?|mensalidades?|parcelas?|prestacoes|aulas)[^.;]{0,20}pag'
+        - '(?:valores?|quantias?) (?:ja )?pag\w* (?:ficam|ficarao|serao) (?:retid|perdid)'
+
+  - id: arrependimento
+    title: Restringe a desistência em 7 dias na contratação fora do estabelecimento
+    severity: alta
+    basis: [cdc:art49, cdc:art49:pu]
+    why: >-
+      Quando a contratação ocorre fora do estabelecimento comercial, o consumidor pode desistir
+      do contrato em 7 dias, contados da assinatura ou do recebimento do serviço [cdc:art49].
+      Os valores pagos durante o prazo de reflexão, a qualquer título, são devolvidos de
+      imediato e monetariamente atualizados [cdc:art49:pu].
+    redline: >-
+      O CONTRATANTE que contratar fora do estabelecimento comercial, inclusive pelo telefone,
+      pelo site ou pelo aplicativo, pode desistir em 7 (sete) dias, contados da assinatura ou do
+      recebimento do serviço, e recebe de imediato todos os valores pagos, monetariamente
+      atualizados.
+    match:
+      all: ['desist|arrepend']
+      any:
+        - 'ret(?:id|en|er)\w*'
+        - '(?<!sem )(?<!nenhuma )(?:taxas?|multas?|tarifas?)\b'
+        - 'descont|abatiment'
+        - 'nao (?:havera|ha|cabera|cabe|tera|terao) (?:direito a |qualquer )?(?:devolucao|reembolso|restituicao|estorno)'
+        - '(?:devolucao|reembolso|restituicao|estorno)[^.;]{0,60}(?:em ate|no prazo de|apos|depois de|decorridos) \d+'
+        - 'nao se aplica|nao vale para'
+
+  - id: onus-da-prova
+    title: Inverte o ônus da prova contra o consumidor
+    severity: alta
+    basis: [cdc:art51:VI, cdc:art6:VIII]
+    why: >-
+      São nulas as cláusulas que estabeleçam inversão do ônus da prova em prejuízo do
+      consumidor [cdc:art51:VI]. O CDC prevê a inversão do ônus da prova a favor do consumidor,
+      a critério do juiz, quando a alegação for verossímil ou ele for hipossuficiente
+      [cdc:art6:VIII].
+    redline: >-
+      A prova dos fatos segue a lei, assegurada ao CONTRATANTE a facilitação da defesa dos seus
+      direitos, inclusive com a inversão do ônus da prova a seu favor.
+    match:
+      any:
+        - '(?:cabe|cabera|compete|competira|incumbe|incumbira|fica a cargo)[^.;]{0,30}(?:ao|a|do|da) (?:contratante|consumidor\w*|alun[oa]s?|associad[oa]|assinante|beneficiari[oa]|cliente|usuari[oa]|titular|mensalista)[^.;]{0,60}(?:onus|provar|comprovar|prova)'
+        - 'onus da prova[^.;]{0,80}(?:contratante|consumidor\w*|alun[oa]s?|associad[oa]|assinante|beneficiari[oa]|cliente|usuari[oa]|titular|mensalista)'
+        - '(?:presum\w*|considera(?:r)?-se)[^.;]{0,100}(?:salvo|ate|exceto) (?:prova|comprovacao) em contrario[^.;]{0,80}(?:contratante|consumidor\w*|alun[oa]s?|associad[oa]|assinante|beneficiari[oa]|cliente|usuari[oa]|titular|mensalista)'
+
+  - id: arbitragem-compulsoria
+    title: Impõe a arbitragem
+    severity: alta
+    basis: [cdc:art51:VII]
+    why: >-
+      São nulas as cláusulas que determinem a utilização compulsória de arbitragem
+      [cdc:art51:VII].
+    redline: >-
+      Os conflitos deste contrato podem ser levados ao Poder Judiciário. A arbitragem só será
+      usada se o CONTRATANTE, depois de surgido o conflito, concordar com ela por escrito.
+    match:
+      all: ['arbitr']
+      any:
+        - 'obrigatori|compulsori|exclusiv|definitiv|renunci|irrecorri'
+        - '(?:sera|serao|deve|devera|deverao|devem) (?:ser )?(?:dirimid|resolvid|decidid|submetid|solucionad)'
+        - '(?:fica|ficam) (?:eleita|eleito|instituida|convencionada)'
+      none:
+        - 'facultativ|opcional'
+        - 'se (?:o|a) (?:contratante|consumidor\w*|alun[oa]|associad[oa]|assinante|beneficiari[oa]|cliente|usuari[oa]|titular|mensalista) (?:preferir|optar|escolher|quiser|desejar|concordar)'
+        - 'de comum acordo|depois de surgido|apos o surgimento'
+
+  - id: preco-unilateral
+    title: Deixa o fornecedor mudar o preço sozinho
+    severity: alta
+    basis: [cdc:art51:X]
+    why: >-
+      São nulas as cláusulas que permitam ao fornecedor, direta ou indiretamente, variação do
+      preço de maneira unilateral [cdc:art51:X].
+    redline: >-
+      O valor é reajustado uma vez a cada 12 (doze) meses, pela variação do IPCA, com aviso ao
+      CONTRATANTE com 30 (trinta) dias de antecedência.
+    match:
+      all:
+        - 'reajust|alter|aument|major|modific|revis|atualiz'
+        - 'valor|preco|mensalidade|tarifa|parcela|anuidade|assinatura'
+        - 'a qualquer (?:tempo|momento)|a (?:seu )?(?:exclusivo |livre )?criterio|unilateral\w*|livremente|sem (?:previo )?aviso|independentemente de (?:aviso|anuencia|concordancia|comunicacao|notificacao)|quando (?:julgar|entender) (?:necessario|conveniente)|conforme (?:seus|os seus) custos'
+        - 'contratada|fornecedor\w*|operadora|academia|escola|instituto|provedora|empresa|studio|plataforma|garagem|clube|instituicao'
+
+  - id: cancelamento-unilateral
+    title: Só o fornecedor pode cancelar quando quiser
+    severity: alta
+    basis: [cdc:art51:XI]
+    why: >-
+      São nulas as cláusulas que autorizem o fornecedor a cancelar o contrato unilateralmente,
+      sem que igual direito seja conferido ao consumidor [cdc:art51:XI].
+    redline: >-
+      Qualquer das partes pode encerrar este contrato mediante aviso com 30 (trinta) dias de
+      antecedência, nas mesmas condições.
+    match:
+      all:
+        - 'a qualquer (?:tempo|momento)|a (?:seu )?(?:exclusivo |livre )?criterio|unilateral\w*|sem (?:previo )?aviso|independentemente de (?:aviso|notificacao|justificativa|motivo|comunicacao)|imotivad|sem justificativa|sem motivo|por qualquer motivo'
+      any:
+        - '(?:contratada|fornecedor\w*|operadora|academia|escola|instituto|provedora|empresa|studio|plataforma|garagem|clube|instituicao)[^.;]{0,60}(?:podera|pode|reserva-se|fica autorizada|tem o direito)[^.;]{0,60}(?:rescindir|cancelar|resilir|encerrar|extinguir|suspender|desligar|desativar)'
+      none:
+        - 'igual direito|mesmo direito|reciproc|qualquer das partes|ambas as partes'
+        - '(?:contratante|consumidor\w*|alun[oa]s?|associad[oa]|assinante|beneficiari[oa]|cliente|usuari[oa]|titular|mensalista)[^.;]{0,40}(?:tambem )?(?:podera|pode|poderao|podem)[^.;]{0,40}(?:rescindir|cancelar|resilir|encerrar)'
+
+  - id: custos-de-cobranca
+    title: Põe no consumidor os custos da cobrança
+    severity: media
+    basis: [cdc:art51:XII]
+    why: >-
+      São nulas as cláusulas que obriguem o consumidor a ressarcir os custos de cobrança de sua
+      obrigação, sem que igual direito lhe seja conferido contra o fornecedor [cdc:art51:XII].
+    redline: ''
+    match:
+      all: ['cobranc|inadimpl|atras|debito|divida']
+      any:
+        - '(?:custos|despesas|encargos|gastos) (?:de|da|com a|com|das|decorrentes da) cobranca'
+        - 'honorarios (?:advocaticios|de advogad|do advogad)'
+      none:
+        - 'igual direito|mesmo direito|reciproc|ambas as partes|qualquer das partes|a parte que'
+
+  - id: alteracao-unilateral
+    title: Deixa o fornecedor mudar o serviço sozinho
+    severity: alta
+    basis: [cdc:art51:XIII]
+    why: >-
+      São nulas as cláusulas que autorizem o fornecedor a modificar unilateralmente o conteúdo
+      ou a qualidade do contrato, após sua celebração [cdc:art51:XIII].
+    redline: >-
+      A mudança de horários, conteúdo ou características dos serviços depende de aviso ao
+      CONTRATANTE com 30 (trinta) dias de antecedência; se a mudança o prejudicar, ele pode
+      encerrar o contrato sem multa, com a devolução proporcional do que pagou.
+    match:
+      all:
+        - 'alter|modific|substitu|reduz|suprim|remanej|mud|retir|descredenc'
+        - 'horario|grade|modalidade|conteudo|programa|servico|velocidade|franquia|rede|unidade|professor|instrutor|carga horaria|cobertura|beneficio|canais|aula|turma|modulo|curso|material|dentista|medico|qualidade'
+        - 'a qualquer (?:tempo|momento)|a (?:seu )?(?:exclusivo |livre )?criterio|unilateral\w*|livremente|sem (?:previo )?aviso|independentemente de (?:aviso|anuencia|concordancia|comunicacao|notificacao)|quando (?:julgar|entender) (?:necessario|conveniente)'
+        - 'contratada|fornecedor\w*|operadora|academia|escola|instituto|provedora|empresa|studio|plataforma|garagem|clube|instituicao'
+
+  - id: acesso-ao-judiciario
+    title: Condiciona ou limita o acesso à Justiça
+    severity: alta
+    basis: [cdc:art51:XVII, cdc:art6:VII]
+    why: >-
+      São nulas as cláusulas que condicionem ou limitem de qualquer forma o acesso aos órgãos do
+      Poder Judiciário [cdc:art51:XVII]. O acesso aos órgãos judiciários e administrativos, para
+      prevenir ou reparar danos, é direito básico do consumidor [cdc:art6:VII].
+    redline: >-
+      O CONTRATANTE pode usar o atendimento da CONTRATADA para resolver reclamações, sem
+      prejuízo de recorrer, quando quiser, aos órgãos de defesa do consumidor e ao Poder
+      Judiciário.
+    match:
+      any:
+        - '(?:somente|so|apenas) (?:podera|poderao|pode|podem)[^.;]{0,80}(?:ingressar|recorrer|acionar|propor|ajuizar|demandar|reclamar)[^.;]{0,60}(?:juizo|judiciario|justica|acao|procon)'
+        - 'renunci\w*[^.;]{0,60}(?:direito de acao|ao judiciario|a via judicial|a acao judicial|a justica|de acionar|de reclamar|de recorrer)'
+        - '(?:antes|previamente|como condicao)[^.;]{0,30}(?:de )?(?:ingressar|recorrer|acionar|propor|ajuizar|reclamar)[^.;]{0,60}(?:juizo|judiciario|justica|acao|procon)'
+        - 'esgot\w*[^.;]{0,40}(?:via|instancia|esfera|canais|canal|atendimento)'
+        - '(?:vedad|proibid|nao (?:podera|pode))[^.;]{0,60}(?:ingressar|recorrer|acionar|propor|ajuizar)[^.;]{0,60}(?:juizo|judiciario|justica|acao|procon)'
+
+  - id: carencia-por-atraso
+    title: Carência ou bloqueio depois de pago o atraso
+    severity: alta
+    basis: [cdc:art51:XVIII]
+    why: >-
+      São nulas as cláusulas que estabeleçam prazos de carência em caso de impontualidade das
+      prestações mensais ou impeçam o restabelecimento integral dos direitos do consumidor a
+      partir da purgação da mora [cdc:art51:XVIII].
+    redline: >-
+      Pago o débito em atraso, o CONTRATANTE recupera de imediato todos os direitos do contrato,
+      sem nova carência.
+    match:
+      all: ['atras|inadimpl|impontual|mora\b|debito']
+      any:
+        - '(?:nova|novas|novo prazo de|novamente a|reinici\w*|reinicio d[ao]s?|recomec\w*|contagem d[ao]s?)[^.;]{0,20}carencia'
+        - 'carencia[^.;]{0,40}(?:reinici|recomec|novamente|nova contagem)'
+        - '(?:restabelec|reativ|liber|retom|desbloque)\w*[^.;]{0,80}(?:somente|apenas|so)[^.;]{0,40}(?:apos|depois|decorrid)[^.;]{0,30}\d+'
+        - '(?:somente|apenas|so)[^.;]{0,40}(?:restabelec|reativ|liber|retom|desbloque)\w*[^.;]{0,30}\d+ (?:\([^)]{0,30}\) )?(?:dias|horas)[^.;]{0,20}(?:apos|depois)'
+        - '(?:restabelec|reativ|liber|retom|desbloque)\w*[^.;]{0,60}\d+ (?:\([^)]{0,30}\) )?dias (?:uteis |corridos )?(?:apos|depois|contados) (?:d[ao] |a )?(?:pagamento|quitacao|regularizacao)'
+
+  - id: multa-de-mora
+    title: Multa de mora acima de 2%
+    severity: media
+    basis: [cdc:art52:p1, cdc:art52]
+    why: >-
+      As multas de mora pelo inadimplemento não podem passar de 2% do valor da prestação
+      [cdc:art52:p1]. O limite está no artigo sobre o fornecimento que envolve outorga de
+      crédito ou financiamento ao consumidor [cdc:art52]: confira se o pagamento em prestações
+      se enquadra.
+    redline: >-
+      Em caso de atraso, incide multa de mora de 2% (dois por cento) do valor da prestação.
+    match:
+      all: ['atras|mora|inadimpl|impontual|vencid|vencimento']
+      above:
+        anchor: 'multa'
+        unit: percent
+        limit: 2
+        context: 'atras|mora|inadimpl|impontual|vencid|vencimento|em aberto'
+
+  - id: foro-de-eleicao
+    title: Foro longe do domicílio do consumidor
+    severity: media
+    basis: [cdc:art101:I, cdc:art51:XV]
+    why: >-
+      Na ação de responsabilidade civil do fornecedor, o consumidor pode propor a ação no
+      próprio domicílio [cdc:art101:I]. Cláusula que elege outro foro contraria esse sistema de
+      proteção, e são nulas as cláusulas em desacordo com o sistema de proteção ao consumidor
+      [cdc:art51:XV].
+    redline: >-
+      Fica eleito o foro do domicílio do CONTRATANTE, sem prejuízo de outro que a lei lhe
+      faculte.
+    match:
+      all: ['\bforo\b']
+      any:
+        - 'comarca d[ae]\b|cidade d[ae]\b'
+        - 'sede d[ao] (?:contratada|fornecedor\w*|operadora|academia|escola|instituto|provedora|empresa|studio|plataforma|garagem|clube|instituicao)'
+        - 'renunci|exclusao de (?:qualquer|todo|todos)|por mais privilegiado|exclusivamente|com exclusao'
+      none:
+        - 'domicilio d[oa] (?:contratante|consumidor\w*|alun[oa]|associad[oa]|assinante|beneficiari[oa]|cliente|usuari[oa]|titular|mensalista)'
+
+  - id: internacao-limitada
+    title: Limita no tempo a internação em plano de saúde
+    severity: alta
+    basis: [stj:sumula:302, cdc:art51:IV, cdc:art51:p1:II]
+    why: >-
+      É abusiva a cláusula de plano de saúde que limita no tempo a internação hospitalar
+      [stj:sumula:302]. Presume-se exagerada a vantagem que restringe direitos ou obrigações
+      fundamentais inerentes à natureza do contrato [cdc:art51:p1:II], e são nulas as cláusulas
+      que coloquem o consumidor em desvantagem exagerada [cdc:art51:IV].
+    redline: >-
+      A internação hospitalar coberta, inclusive em unidade de terapia intensiva, não tem limite
+      de prazo.
+    match:
+      all: ['internac']
+      any:
+        - '(?:limit\w*|maximo|ate|teto|restrit\w*)[^.;]{0,30}\d+ (?:\([^)]{0,30}\) )?(?:dias|diarias)'
+        - '\d+ (?:\([^)]{0,30}\) )?(?:dias|diarias) (?:por ano|anuais|por internacao|por periodo|por ano de contrato|ao ano)'
+
+  - id: carencia-de-urgencia
+    title: Carência acima de 24 horas para urgência ou emergência
+    severity: alta
+    basis: [stj:sumula:597, cdc:art51:IV]
+    why: >-
+      A cláusula de plano de saúde que prevê carência para urgência ou emergência é abusiva se
+      passar de 24 horas contadas da contratação [stj:sumula:597]. São nulas as cláusulas que
+      coloquem o consumidor em desvantagem exagerada [cdc:art51:IV].
+    redline: >-
+      Atendimentos de urgência e emergência: carência de 24 (vinte e quatro) horas, contadas da
+      contratação.
+    match:
+      all: ['carencia']
+      above:
+        anchor: 'urgencia|emergencia'
+        unit: hours
+        limit: 24
+
+criteria:
+  - id: desvantagem-exagerada
+    title: Obrigação desproporcional para o consumidor
+    severity: alta
+    basis: [cdc:art51:IV, cdc:art51:p1:III]
+    why: >-
+      São nulas as cláusulas que estabeleçam obrigações iníquas, abusivas, que coloquem o
+      consumidor em desvantagem exagerada ou sejam incompatíveis com a boa-fé ou a equidade
+      [cdc:art51:IV]. Presume-se exagerada a vantagem que se mostra excessivamente onerosa para
+      o consumidor, considerando a natureza e o conteúdo do contrato [cdc:art51:p1:III].
+    description: >-
+      A cláusula impõe ao consumidor obrigação iníqua ou abusiva, que o coloca em desvantagem
+      exagerada ou é incompatível com a boa-fé: multa de cancelamento desproporcional ao que
+      falta cumprir, cobrança integral do período restante, cobrança em dobro, perda de serviços
+      já pagos ou fidelidade longa sem contrapartida.
+    redline: >-
+      Em caso de cancelamento antecipado pelo CONTRATANTE, a multa fica limitada a 10% (dez por
+      cento) do valor das prestações que faltam, e nada é cobrado pelos serviços que ele não vai
+      receber.
+
+  - id: redacao-obscura
+    title: Redação que dificulta entender a cláusula
+    severity: media
+    basis: [cdc:art46, cdc:art54:p3]
+    why: >-
+      Os contratos de consumo não obrigam o consumidor se forem redigidos de modo a dificultar a
+      compreensão de seu sentido e alcance [cdc:art46]. O contrato de adesão escrito deve ser
+      redigido em termos claros, com caracteres ostensivos e legíveis [cdc:art54:p3].
+    description: >-
+      A redação dificulta compreender o sentido e o alcance da cláusula: remete a regulamento,
+      tabela ou critério que o consumidor não recebeu, usa termos vagos ou técnicos sem
+      explicação, ou deixa valores, prazos e condições indefinidos.
+    redline: >-
+      Cláusula reescrita em termos claros, com os valores, prazos e condições escritos no próprio
+      contrato e o documento citado entregue ao CONTRATANTE na contratação.
+
+  - id: venda-casada
+    title: Condiciona o serviço à compra de outro produto ou serviço
+    severity: alta
+    basis: [cdc:art39:I]
+    why: >-
+      É prática abusiva condicionar o fornecimento de serviço ao fornecimento de outro produto
+      ou serviço, ou, sem justa causa, a limites quantitativos [cdc:art39:I].
+    description: >-
+      A cláusula condiciona o serviço à compra de outro produto ou serviço, como uniforme,
+      material, seguro, equipamento ou outro plano, ou impõe limites de quantidade sem justa
+      causa.
+    redline: >-
+      A compra de produtos ou serviços adicionais é opcional e não condiciona a prestação dos
+      serviços deste contrato.
+
+  - id: prazo-a-criterio
+    title: Prazo da obrigação do fornecedor a critério dele
+    severity: media
+    basis: [cdc:art39:XII]
+    why: >-
+      É prática abusiva deixar de estipular prazo para o cumprimento da própria obrigação ou
+      deixar a fixação de seu termo inicial a exclusivo critério do fornecedor [cdc:art39:XII].
+    description: >-
+      O fornecedor não fixa prazo para cumprir a própria obrigação (instalação, início das
+      aulas, entrega de certificado, reparo, reembolso) ou deixa o termo inicial a seu
+      exclusivo critério.
+    redline: >-
+      A CONTRATADA cumpre esta obrigação em até 10 (dez) dias úteis, contados da contratação.
