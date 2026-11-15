@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     # fictitious pairs, 0.97 merged 10 of 14 rewrites and none of 16 different facts.
     memory_dedupe_similarity: float = Field(default=0.97, gt=0, le=1)
     memory_min_confidence: float = Field(default=0.7, ge=0, le=1)  # below it, nothing is kept
+    # The assistant writes what each finished chat turn taught, one `fast` call after `done`.
+    # Off, it still reads the memories: for tests and runs that save the model calls.
+    memory_write_enabled: bool = True
     # Key of the HMAC that turns a CPF, a name or an e-mail into the data subject id tagging
     # memories (LGPD forgetting). Required in prod; changing it orphans the ids already stored.
     data_subject_key: SecretStr | None = None

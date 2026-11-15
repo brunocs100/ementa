@@ -1,6 +1,6 @@
 """The `assistant` supervisor with scripted models: routing, personal data, memory and traces.
 
-Every name and CPF here is fictitious. The Postgres test needs EMENTA_TEST_DATABASE_URL.
+Every name and CPF here is fictitious. The Postgres tests need EMENTA_TEST_DATABASE_URL.
 """
 
 import json
@@ -21,11 +21,14 @@ from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.store.base import BaseStore
+from langgraph.store.memory import InMemoryStore
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from psycopg import sql
 from pydantic import Field
+from structlog.testing import capture_logs
 
 from ementa.agents.assistant import (
     AssistantAgent,
@@ -40,11 +43,13 @@ from ementa.agents.assistant import graph as assistant_graph
 from ementa.agents.assistant.graph import DENIED, FAILED, INTERRUPTED, MALFORMED, MAX_ROUNDS
 from ementa.agents.legal_research import Citation, LegalResearchAgent, ResearchAnswer
 from ementa.agents.legal_research import graph as research_graph
+from ementa.memory import EXTRACT_PROMPT, FIRM, case, lawyer, relevant_memories
 from ementa.pii import pii_guard
+from ementa.prompts import get_prompt
 from ementa_kit.config import Settings
 from ementa_kit.context import assert_append_only
 from ementa_kit.llm import ModelRegistry, ModelRole, ModelSpec, ModelUnavailableError
-from ementa_kit.memory import postgres_checkpointer
+from ementa_kit.memory import MemoryWriter, Namespace, memory_value, postgres_checkpointer
 from ementa_kit.rag import Hit
 
 
@@ -138,19 +143,33 @@ class FakeResearcher:
         )
 
 
+def registry_of(model: ScriptedChat) -> ModelRegistry:
+    """Every model role answered by `model`."""
+
+    def factory(spec: ModelSpec) -> ScriptedChat:
+        return model
+
+    return ModelRegistry(Settings(_env_file=None), factory=factory)  # type: ignore[call-arg]
+
+
 def make_agent(
     replies: list[AIMessage],
     researcher: FakeResearcher | None = None,
     checkpointer: BaseCheckpointSaver[Any] | None = None,
+    *,
+    memories: Callable[[], BaseStore] | None = None,
+    writer: Callable[[], MemoryWriter] | None = None,
 ) -> tuple[AssistantAgent, ScriptedChat, FakeResearcher]:
     fast = ScriptedChat(replies=replies)
-
-    def factory(spec: ModelSpec) -> ScriptedChat:
-        return fast
-
     research = researcher or FakeResearcher()
-    registry = ModelRegistry(Settings(_env_file=None), factory=factory)  # type: ignore[call-arg]
-    agent = AssistantAgent(registry, lambda: research, checkpointer or InMemorySaver(), pii_guard)
+    agent = AssistantAgent(
+        registry_of(fast),
+        lambda: research,
+        checkpointer or InMemorySaver(),
+        pii_guard,
+        memories=memories,
+        writer=writer,
+    )
     return agent, fast, research
 
 
@@ -415,6 +434,123 @@ def test_a_tool_call_left_open_by_a_crash_is_closed_before_the_next_turn() -> No
     assert [m.type for m in last[-3:]] == ["ai", "tool", "human"]
     assert last[-2].text == INTERRUPTED
     assert_append_only(fast.calls)  # closed by appending, not by editing
+
+
+# Long-term memory ---------------------------------------------------------------------------
+
+
+def remember(store: BaseStore, namespace: Namespace, text: str) -> None:
+    store.put(namespace.path, uuid.uuid4().hex, memory_value(namespace, text, [], 0.9))
+
+
+def test_memories_reach_the_model_masked_in_the_new_turn_and_stay_out_of_the_history() -> None:
+    store = InMemoryStore()
+    remember(store, lawyer("ana"), "Prefere respostas em tópicos.")
+    remember(store, case("c1"), "A cliente Maria Souza, CPF 123.456.789-09, quer acordo.")
+    remember(store, FIRM, "Cobrança indevida se devolve em dobro [cdc:art42:pu].")
+    remember(store, lawyer("bia"), "Prefere textos longos.")  # someone else's preference
+    agent, fast, _ = make_agent(
+        [AIMessage("[PESSOA_1] quer acordo; o CPF é [CPF_1]."), AIMessage("Em tópicos.")],
+        memories=lambda: store,
+    )
+    question = "Chegou a proposta de Maria Souza. Ela quer acordo?"
+
+    first = list(agent.chat(question, user_id="ana", case_id="c1"))
+    thread = done(first).thread_id
+    list(agent.chat("E o formato?", user_id="ana", thread_id=thread))
+
+    assert fast.calls[0][-1].text == (
+        "<memorias>\n"
+        "Preferências do advogado:\n- Prefere respostas em tópicos.\n"
+        "Ficha do processo:\n- A cliente [PESSOA_1], CPF [CPF_1], quer acordo.\n"
+        "Teses do escritório:\n- Cobrança indevida se devolve em dobro [cdc:art42:pu].\n"
+        "</memorias>\n\n"
+        "<pergunta>\nChegou a proposta de [PESSOA_1]. Ela quer acordo?\n</pergunta>"
+    )
+    sent = [m.text for request in fast.calls for m in request]
+    assert not any("Maria" in t or "123.456.789-09" in t or "longos" in t for t in sent)
+    reply = "Maria Souza quer acordo; o CPF é 123.456.789-09."  # the memory's marker came back
+    assert done(first).message == tokens(first) == reply
+    assert "Ficha do processo" not in fast.calls[1][-1].text  # no case named in turn 2
+    assert_append_only(fast.calls)  # turn 2 came in a new message; turn 1's stayed as it was
+    history = agent.history(thread, user_id="ana")
+    assert [m.content for m in history.messages] == [question, reply, "E o formato?", "Em tópicos."]
+
+
+def extraction(*memories: dict[str, Any]) -> AIMessage:
+    """What the memory writer's model answers."""
+    return AIMessage(json.dumps({"memories": list(memories)}))
+
+
+def writer_of(store: BaseStore, model: ScriptedChat) -> MemoryWriter:
+    """The writer as `services.memory_writer()` builds it, on `model`."""
+    return MemoryWriter(
+        store,
+        registry_of(model),
+        pii_guard,
+        get_prompt(*EXTRACT_PROMPT),
+        subject_key=b"chave-de-teste",
+        similarity=0.97,
+        min_confidence=0.7,
+    )
+
+
+def test_after_done_the_turn_is_written_with_the_markers_of_the_thread() -> None:
+    store = InMemoryStore()
+    extractor = ScriptedChat(
+        replies=[
+            extraction(
+                {"scope": "lawyer", "text": "Prefere respostas em tópicos.", "confidence": 0.9},
+                {"scope": "case", "text": "[PESSOA_1] quer acordo.", "confidence": 0.8},
+            ),
+            extraction(),
+        ]
+    )
+    agent, fast, _ = make_agent(
+        [AIMessage("Anotado, [PESSOA_1]."), AIMessage("Em tópicos: [PESSOA_1] quer acordo.")],
+        memories=lambda: store,
+        writer=lambda: writer_of(store, extractor),
+    )
+
+    for event in agent.chat(
+        "Maria Souza quer acordo. Responda sempre em tópicos.", user_id="ana", case_id="c1"
+    ):
+        if isinstance(event, DoneEvent):
+            assert extractor.calls == []  # the user has the reply before anything is written
+
+    [request] = extractor.calls
+    assert "<escopos>\nlawyer, case\n</escopos>" in request[-1].text  # chat_targets("ana", "c1")
+    assert "usuário: [PESSOA_1] quer acordo." in request[-1].text  # the thread's own marker
+    assert "Maria" not in request[-1].text
+    found = relevant_memories(store, "acordo", user_id="ana", case_id="c1")
+    assert {(m.namespace, m.text) for m in found} == {
+        (lawyer("ana"), "Prefere respostas em tópicos."),
+        (case("c1"), "Maria Souza quer acordo."),
+    }
+    list(agent.chat("Como ela quer resolver?", user_id="ana", case_id="c1"))  # a new thread
+    assert "Ficha do processo:\n- [PESSOA_1] quer acordo." in fast.calls[1][-1].text
+
+
+def test_a_memory_store_that_fails_costs_the_turn_its_memories_not_its_reply() -> None:
+    def no_store() -> BaseStore:
+        raise RuntimeError("banco fora do ar")
+
+    def no_writer() -> MemoryWriter:
+        raise RuntimeError("banco fora do ar")
+
+    agent, fast, _ = make_agent(
+        [AIMessage("Olá."), AIMessage("Pronto.")], memories=no_store, writer=no_writer
+    )
+
+    with capture_logs() as logs:
+        first = list(agent.chat("Bom dia", user_id="ana"))
+        second = list(agent.chat("E agora?", user_id="ana", thread_id=done(first).thread_id))
+
+    assert (done(first).message, done(second).message) == ("Olá.", "Pronto.")
+    assert fast.calls[0][-1].text == "Bom dia"  # the message alone, with no memory section
+    warnings = [(e["event"], e["error"]) for e in logs if e["log_level"] == "warning"]
+    each_turn = [("memory_read_failed", "RuntimeError"), ("memory_write_failed", "RuntimeError")]
+    assert warnings == each_turn * 2
 
 
 ART49 = Hit(

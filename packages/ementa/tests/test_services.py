@@ -1,16 +1,23 @@
-"""The settings switch the rerank on and off. Nothing is downloaded or loaded here."""
+"""The services follow the settings: the rerank on and off, the assistant's memory. Nothing is
+downloaded here; the assistant's turn loads the PII guard."""
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any
 
 import pytest
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, BaseMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.store.memory import InMemoryStore
 
 from ementa import services
+from ementa.agents.assistant import DoneEvent
 from ementa.agents.legal_research import LegalResearchAgent
 from ementa.agents.legal_research.graph import CONTEXT_LIMIT
+from ementa.memory import lawyer
 from ementa_kit.config import Settings
 from ementa_kit.llm import ModelRegistry
+from ementa_kit.memory import Namespace, Written
 from ementa_kit.rag import FastReranker
 
 
@@ -111,3 +118,59 @@ def test_the_assistant_is_built_once_without_loading_the_research_agent(
     finally:
         services.assistant_agent.cache_clear()
     assert agent.graph.checkpointer is saver
+
+
+class RecordingWriter:
+    def __init__(self) -> None:
+        self.targets: list[list[Namespace]] = []
+
+    def write(
+        self,
+        turn: Sequence[BaseMessage],
+        targets: Sequence[Namespace],
+        mapping: Mapping[str, str] | None = None,
+    ) -> list[Written]:
+        self.targets.append(list(targets))
+        return []
+
+
+@pytest.mark.parametrize("write", [True, False])
+def test_the_assistant_opens_the_memory_on_the_first_turn_and_writes_when_enabled(
+    monkeypatch: pytest.MonkeyPatch, write: bool
+) -> None:
+    settings = Settings(_env_file=None, memory_write_enabled=write)  # type: ignore[call-arg]
+    chat = GenericFakeChatModel(messages=iter([AIMessage("Bom dia.")]))
+    writer = RecordingWriter()
+    opened: list[str] = []
+
+    def registry() -> ModelRegistry:
+        return ModelRegistry(settings, factory=lambda spec: chat)
+
+    def memory_store() -> InMemoryStore:
+        opened.append("store")
+        return InMemoryStore()
+
+    def memory_writer() -> RecordingWriter:
+        opened.append("writer")
+        return writer
+
+    monkeypatch.setattr(services, "get_settings", lambda: settings)
+    monkeypatch.setattr(services, "checkpointer", InMemorySaver)
+    monkeypatch.setattr(services, "model_registry", registry)
+    monkeypatch.setattr(services, "memory_store", memory_store)
+    monkeypatch.setattr(services, "memory_writer", memory_writer)
+    services.assistant_agent.cache_clear()
+    try:
+        agent = services.assistant_agent()
+        assert opened == []  # nothing opens with the assistant
+        events = list(agent.chat("Bom dia", user_id="ana", allowed_tools=[]))
+        first_turn = list(opened)
+        last = events[-1]
+        assert isinstance(last, DoneEvent)
+        agent.history(last.thread_id, user_id="ana")
+    finally:
+        services.assistant_agent.cache_clear()
+
+    assert first_turn == (["store", "writer"] if write else ["store"])
+    assert opened == first_turn  # reading the history needed neither
+    assert writer.targets == ([[lawyer("ana")]] if write else [])
