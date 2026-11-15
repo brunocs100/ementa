@@ -16,6 +16,7 @@ repos:
         exclude: ^data/corpus/raw/
       - id: check-added-large-files
         args: ["--maxkb=1024"]
+        exclude: ^data/corpus/raw/ # official snapshots, kept whole so their sha256 can be checked
       - id: detect-private-key
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.5

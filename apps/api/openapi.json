@@ -12,7 +12,7 @@
           "legal-research"
         ],
         "summary": "Pesquisa jurídica com citações verificadas",
-        "description": "Responde uma pergunta de Direito do Consumidor com base no CDC. O agente legal_research busca as fontes, escreve a resposta e passa pelo verificador: toda citação mostrada existe no corpus, e o que não foi verificado é removido e listado em `removed`. Não calcula prazo em dias úteis (use calculate_deadline). A saída é rascunho para o advogado conferir.",
+        "description": "Responde uma pergunta jurídica com base no corpus (CDC, LGPD, CPC, súmulas do STJ de Direito do Consumidor e Bancário e súmulas vinculantes do STF). O agente legal_research busca as fontes, escreve a resposta e passa pelo verificador: toda citação mostrada existe no corpus, e o que não foi verificado é removido e listado em `removed`. Não calcula prazo em dias úteis (use calculate_deadline). A saída é rascunho para o advogado conferir.",
         "operationId": "legal_research_v1_legal_research_post",
         "requestBody": {
           "content": {
