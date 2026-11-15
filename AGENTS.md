@@ -28,7 +28,7 @@ Os da F0 primeiro; os da F1 em seguida.
 uv sync                                          # instala tudo do workspace
 docker compose --profile core --profile obs up -d   # Postgres e Grafana LGTM
 uv run ruff check . ; uv run ruff format --check .
-uv run mypy packages
+uv run mypy packages apps
 uv run pytest -m "not eval"                      # unitários e integração
 
 # A partir da F1

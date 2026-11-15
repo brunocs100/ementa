@@ -118,13 +118,15 @@ flowchart LR
 
 **Tarefas:**
 
-- [ ] `pyproject.toml` raiz com `[tool.uv.workspace]` e os três membros
-- [ ] `ementa_kit.config` com `Settings` (prefixo `EMENTA_`) e perfis dev, ci e prod
-- [ ] `ementa_kit.telemetry.setup()` com exportador OTLP para o otel-lgtm
-- [ ] Compose com healthcheck do Postgres e extensão `vector` habilitada no SQL inicial
-- [ ] CI: uv com cache, `ruff check`, `ruff format --check`, `mypy`, `pytest`
-- [ ] `.vscode/mcp.json` com o servidor `ementa` via stdio (`uv run ementa-mcp`)
-- [ ] Teste de fumaça: importa os pacotes e lê settings
+- [x] `pyproject.toml` raiz com `[tool.uv.workspace]` e os três membros
+- [x] `ementa_kit.config` com `Settings` (prefixo `EMENTA_`) e perfis dev, ci e prod
+- [x] `ementa_kit.telemetry.setup()` com exportador OTLP para o otel-lgtm
+- [x] Compose com healthcheck do Postgres e extensão `vector` habilitada no SQL inicial
+- [x] CI: uv com cache, `ruff check`, `ruff format --check`, `mypy`, `pytest`
+- [x] `.vscode/mcp.json` com o servidor `ementa` via stdio (`uv run ementa-mcp`)
+- [x] Teste de fumaça: importa os pacotes e lê settings
+
+**Status:** em andamento. Feito e conferido localmente: `uv sync`, `pytest`, `ruff`, `mypy` e o servidor MCP respondendo via stdio. Falta conferir com Docker instalado: o Compose saudável, o span no Grafana e o CI verde no primeiro PR.
 
 **Critérios de aceite:** `uv sync` e `uv run pytest` passam numa máquina limpa; `docker compose --profile core --profile obs up -d` sobe os dois serviços saudáveis; o CI fica verde no primeiro PR; um span de teste aparece no Grafana.
 

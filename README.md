@@ -106,7 +106,7 @@ Detalhes em [docs/ARQUITETURA.md](docs/ARQUITETURA.md) e nos [ADRs](docs/adr/REA
 | Marco | Fases | O que dá para mostrar | Meta | Status |
 |---|---|---|---|---|
 | 0 | — | Plano, arquitetura e decisões | 14/11/2026 | Pronto |
-| 1 | F0, F1 | Pesquisa no CDC com citação verificada e cálculo de prazo, pelo MCP no VS Code, com traces | 19/11/2026 | Planejado |
+| 1 | F0, F1 | Pesquisa no CDC com citação verificada e cálculo de prazo, pelo MCP no VS Code, com traces | 19/11/2026 | Em andamento |
 | 2 | F2, F3 | PII pseudonimizada, skills, API, memória e supervisor | 04/12/2026 | Planejado |
 | 3 | F4 a F6 | Contratos e peças com aprovação humana, DataJud, grafo e governança completa | 15/01/2027 | Planejado |
 | 4 | F7 a F10 | Operação, Semantic Kernel, Copilot, fine-tuning, MLOps e kit publicado | 19/02/2027 | Planejado |

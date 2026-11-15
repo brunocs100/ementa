@@ -1,0 +1,38 @@
+name: ementa
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17
+    profiles: ["core"]
+    environment:
+      POSTGRES_USER: ementa
+      POSTGRES_PASSWORD: ementa
+      POSTGRES_DB: ementa
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ementa -d ementa"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 512m
+
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.41.0
+    profiles: ["obs"]
+    ports:
+      - "3000:3000"   # Grafana
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    healthcheck:
+      test: ["CMD", "/otel-lgtm/docker/healthcheck.sh"]  # script shipped in the image
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    mem_limit: 1536m
+
+volumes:
+  pgdata:
