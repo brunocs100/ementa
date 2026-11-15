@@ -72,7 +72,7 @@ jobs:
           curl -sSfLO "$base/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           curl -sSfL "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt" | grep linux_x64.tar.gz | sha256sum -c -
           tar -xzf "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" gitleaks
-          ./gitleaks git --redact --exit-code 1 .
+          ./gitleaks git --redact --verbose --exit-code 1 .
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
