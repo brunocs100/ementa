@@ -144,20 +144,22 @@ flowchart LR
 
 **Tarefas:**
 
-- [ ] Snapshot do CDC (Lei 8.078/1990) em `data/corpus/raw/` com URL, data e hash
-- [ ] Parser por artigo, parágrafo e inciso, com ids canônicos (`cdc:art49`, `cdc:art42:pu`, `cdc:art26:II`)
+- [x] Snapshot do CDC (Lei 8.078/1990) em `data/corpus/raw/` com URL, data e hash
+- [x] Parser por artigo, parágrafo e inciso, com ids canônicos (`cdc:art49`, `cdc:art42:pu`, `cdc:art26:II`)
 - [ ] Schema `knowledge` com `sources` e `chunks` (`embedding` HNSW, `tsv` GIN com configuração portuguesa e unaccent)
 - [ ] Embeddings multilíngues locais e comando `uv run ementa ingest cdc`
 - [ ] Busca vetorial e textual (top 30 cada) com fusão RRF (k = 60) numa consulta SQL
 - [ ] Grafo `legal_research`: `parse_question`, `direct_lookup`, `rewrite_queries`, `retrieve`, `assemble_context`, `generate_answer`, `verify_citations`, `finalize`, com uma nova tentativa
-- [ ] Verificador: extrai citações, compara com os ids recuperados, remove e avisa o que não bate
+- [x] Verificador: extrai citações, compara com os ids recuperados, remove e avisa o que não bate
 - [ ] Prompt `legal_research.answer` v1 em arquivo versionado; id e versão no span
 - [ ] Montador de contexto v1 com seções fixas e histórico só de acréscimo
-- [ ] `calculate_deadline` com CPC arts. 219, 220 e 224, feriados nacionais e do RS, premissas na saída
+- [x] `calculate_deadline` com CPC arts. 219, 220 e 224, feriados nacionais e do RS, premissas na saída
 - [ ] Servidor MCP stdio com `search_legal_corpus`, `answer_legal_question`, `get_statute_article`, `calculate_deadline`
 - [ ] Spans `invoke_agent`, `retrieval`, `chat`, `execute_tool`, `guardrail`, com a instrumentação da OpenAI
 - [ ] 10 perguntas de fumaça em `evals/smoke_cdc.jsonl` e comando para rodá-las
 - [ ] Teste de integração da busca no CI com Postgres de serviço
+
+**Status:** em andamento. Prontos e testados: snapshot e parser do CDC, verificador de citações, `calculate_deadline` (o caso fixo dá 26/01/2027) e o servidor MCP com `calculate_deadline` e `get_statute_article`, conferido via stdio. Esperam o Docker e a chave da OpenAI: a busca híbrida, o agente `legal_research`, `search_legal_corpus`, `answer_legal_question`, os traces e as perguntas de fumaça.
 
 **Critérios de aceite:** as 10 perguntas trazem a citação esperada no top 5; nenhuma resposta mostra citação não verificada; o caso fixo de prazo (intimação em 03/12/2026, 15 dias úteis, TJRS) devolve 26/01/2027; o Copilot do VS Code lista e chama as 4 ferramentas; o trace completo aparece no Grafana; CI verde.
 

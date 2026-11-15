@@ -7,7 +7,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from ementa.tools import deadlines
+from ementa.tools import deadlines, statutes
 from ementa_kit.config import get_settings
 from ementa_kit.telemetry import get_logger, get_tracer, setup
 
@@ -54,6 +54,26 @@ def build_server() -> MCPServer:
             },
         ):
             return deadlines.calculate_deadline(request)
+
+    @server.tool(
+        name="get_statute_article",
+        title="Consultar artigo de lei",
+        description=statutes.DESCRIPTION,
+        annotations=READ_ONLY,
+    )
+    def get_statute_article(
+        source_id: Annotated[str, Field(description="Id de fonte, como cdc:art49 ou cdc:art42:pu")],
+    ) -> statutes.StatuteArticleOutput:
+        request = statutes.GetStatuteArticleInput(source_id=source_id)
+        with tracer.start_as_current_span(
+            "execute_tool get_statute_article",
+            attributes={
+                "gen_ai.operation.name": "execute_tool",
+                "gen_ai.tool.name": "get_statute_article",
+                "ementa.data_class": statutes.DATA_CLASS.value,
+            },
+        ):
+            return statutes.get_statute_article(request)
 
     return server
 
