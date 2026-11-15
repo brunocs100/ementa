@@ -21,7 +21,7 @@ Três forças mudam rápido: modelos, preços e provedores. Um escritório (ou u
 | Papel | Modelo de referência |
 |---|---|
 | `reasoning` | GPT-6.1 Terra, effort high |
-| `default` | GPT-6.1 Terra, effort medium |
+| `default` | GPT-6 Luna, effort medium (Terra até 15/11/2026; trocado por custo) |
 | `fast` | GPT-6 Luna |
 | `judge` | GPT-6.1 Sol, em amostra |
 | `local` | Modelo aberto pequeno no Ollama |
