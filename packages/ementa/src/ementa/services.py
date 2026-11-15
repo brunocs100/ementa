@@ -22,9 +22,11 @@ from ementa.prompts import get_prompt
 from ementa.users import UserDirectory
 from ementa_kit.audit import PgAuditLog
 from ementa_kit.config import get_settings
+from ementa_kit.hitl.runner import DraftingAgent, DraftingIntake, DraftingRunner
+from ementa_kit.hitl.store import PgDraftingStore
 from ementa_kit.jobs import JobQueue, PgJobStore
 from ementa_kit.llm import Budget, ModelRegistry, PgUsageLedger, track_usage
-from ementa_kit.memory import MemoryWriter, open_postgres_store, postgres_checkpointer
+from ementa_kit.memory import Episodes, MemoryWriter, open_postgres_store, postgres_checkpointer
 from ementa_kit.rag import FastEmbedder, FastReranker, PgHybridStore
 from ementa_kit.skills import SkillLibrary
 from ementa_kit.telemetry import instrument_openai
@@ -196,9 +198,52 @@ def document_intake() -> DocumentIntake:
 
 @lru_cache
 def document_ingestor() -> DocumentIngestor:
-    """What the worker runs. Loads the embedding model, which takes a few seconds."""
+    """What the worker runs. Loads the embedding model, which takes a few seconds; the episodic
+    memory of the drafting runs shares it."""
     settings = get_settings()
-    embedder = FastEmbedder(settings.embedding_model)
+    embedder = local_embedder()
     chunks = PgHybridStore(settings.database_url, embedder.dim, schema=FIRM_KNOWLEDGE)
     chunks.ensure_schema()
     return DocumentIngestor(document_store(), chunks, embedder)
+
+
+@lru_cache
+def drafting_store() -> PgDraftingStore:
+    """`ai.runs` and `ai.approvals`; the tables are created on first use."""
+    store = PgDraftingStore(get_settings().database_url)
+    store.ensure_schema()
+    return store
+
+
+@lru_cache
+def drafting_agents() -> dict[str, DraftingAgent]:
+    """The drafting agents, by id, each compiled with `checkpointer()`: `brief_drafting` behind
+    POST /v1/briefs and `contract_review` behind POST /v1/contracts/{id}/review. An agent adds
+    its line here when it lands; until then its route answers 503."""
+    return {}
+
+
+@lru_cache
+def episodes() -> Episodes:
+    """Episodic memory: approved and edited drafts, pseudonymized, as few-shot examples. It
+    lives in the long-term memory store, so forgetting a data subject reaches it."""
+    return Episodes(memory_store(), _pii_guard, subject_key=subject_key(get_settings()))
+
+
+@lru_cache
+def drafting_intake() -> DraftingIntake:
+    """What the drafting routes call: Postgres for the runs, the decisions and the jobs, Redis
+    for the queue, and an audit event for each decision."""
+    return DraftingIntake(
+        drafting_store(),
+        job_store(),
+        JobQueue(get_settings().redis_url),
+        audit_log(),
+        agents=drafting_agents().keys(),
+    )
+
+
+@lru_cache
+def drafting_runner() -> DraftingRunner:
+    """What the worker runs for each leg of a drafting run."""
+    return DraftingRunner(drafting_agents(), drafting_store(), episodes())

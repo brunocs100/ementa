@@ -89,6 +89,15 @@ class Progress:
     run: Run
     pending: list[Approval]  # what the run waits on; empty once it ended
 
+    def job_result(self) -> dict[str, Any]:
+        """What the job of the leg records: the run, its status and the approvals it waits on.
+        The result of the run itself stays in the run."""
+        return {
+            "run_id": self.run.id,
+            "status": str(self.run.status),
+            "approvals": [approval.id for approval in self.pending],
+        }
+
 
 def _config(run_id: str) -> RunnableConfig:
     return {"configurable": {"thread_id": run_id}}
