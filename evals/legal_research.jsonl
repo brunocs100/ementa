@@ -1,0 +1,30 @@
+{"id": "cdc-01", "question": "Comprei pela internet e me arrependi. Tenho quanto tempo para desistir?", "expected": ["cdc:art49"]}
+{"id": "cdc-02", "question": "Qual o prazo para reclamar de defeito aparente em produto durável, como uma geladeira?", "expected": ["cdc:art26"]}
+{"id": "cdc-03", "question": "Paguei uma cobrança indevida. Tenho direito a receber de volta em dobro?", "expected": ["cdc:art42"]}
+{"id": "cdc-04", "question": "O fornecedor tem quanto tempo para consertar um produto com vício antes de eu poder pedir a troca?", "expected": ["cdc:art18"]}
+{"id": "cdc-05", "question": "Por quanto tempo meu nome pode ficar negativado em cadastro de inadimplentes?", "expected": ["cdc:art43", "stj:sumula:323"]}
+{"id": "cdc-06", "question": "A loja pode condicionar a venda de um produto à compra de outro?", "expected": ["cdc:art39"]}
+{"id": "cdc-07", "question": "Qual o prazo para pedir indenização por acidente causado por defeito de um produto?", "expected": ["cdc:art27"]}
+{"id": "cdc-08", "question": "Uma cláusula de contrato que me coloca em desvantagem exagerada vale?", "expected": ["cdc:art51"]}
+{"id": "cdc-09", "question": "Quem responde pelos danos causados por um produto com defeito de fabricação?", "expected": ["cdc:art12"]}
+{"id": "cdc-10", "question": "O que a lei considera publicidade enganosa?", "expected": ["cdc:art37"]}
+{"id": "lgpd-01", "question": "Em quais situações uma empresa pode tratar dados pessoais sem violar a LGPD?", "expected": ["lgpd:art7"]}
+{"id": "lgpd-02", "question": "Que direitos o titular tem sobre os dados que uma empresa guarda dele, como corrigir ou pedir a eliminação?", "expected": ["lgpd:art18"]}
+{"id": "lgpd-03", "question": "O que a LGPD considera dado pessoal sensível?", "expected": ["lgpd:art5"]}
+{"id": "lgpd-04", "question": "Houve um vazamento de dados de clientes. A empresa precisa avisar alguém?", "expected": ["lgpd:art48"]}
+{"id": "lgpd-05", "question": "Qual o valor máximo da multa que a ANPD pode aplicar a uma empresa por descumprir a LGPD?", "expected": ["lgpd:art52"]}
+{"id": "lgpd-06", "question": "Uma escola pode tratar dados pessoais de crianças? De quem precisa de autorização?", "expected": ["lgpd:art14"]}
+{"id": "lgpd-07", "question": "Quem paga a indenização quando o tratamento de dados pessoais causa dano a alguém?", "expected": ["lgpd:art42"]}
+{"id": "cpc-01", "question": "Os prazos processuais em dias são contados em dias corridos ou só em dias úteis?", "expected": ["cpc:art219"]}
+{"id": "cpc-02", "question": "Os prazos processuais continuam correndo entre o Natal e o começo de janeiro?", "expected": ["cpc:art220"]}
+{"id": "cpc-03", "question": "O dia em que o advogado foi intimado conta como primeiro dia do prazo?", "expected": ["cpc:art224"]}
+{"id": "cpc-04", "question": "Quando há vários réus com advogados de escritórios diferentes, o prazo deles é maior?", "expected": ["cpc:art229"]}
+{"id": "cpc-05", "question": "Qual o prazo do réu para contestar a ação?", "expected": ["cpc:art335"]}
+{"id": "cpc-06", "question": "Qual é o prazo para interpor apelação e para responder a ela?", "expected": ["cpc:art1003"]}
+{"id": "cpc-07", "question": "Em quantos dias devem ser opostos os embargos de declaração?", "expected": ["cpc:art1023"]}
+{"id": "stj-01", "question": "As regras do Código de Defesa do Consumidor valem para contratos com bancos?", "expected": ["stj:sumula:297"]}
+{"id": "stj-02", "question": "Quem já tinha o nome negativado por uma dívida legítima tem direito a dano moral por uma nova anotação irregular?", "expected": ["stj:sumula:385"]}
+{"id": "stj-03", "question": "O banco responde pelos prejuízos de uma fraude praticada por terceiros na conta do cliente?", "expected": ["stj:sumula:479"]}
+{"id": "stj-04", "question": "Depois que a dívida é paga, em quanto tempo o credor deve tirar o nome do devedor do cadastro de inadimplentes?", "expected": ["stj:sumula:548"]}
+{"id": "stf-01", "question": "Uma ação de consumidor contra a operadora de telefonia fixa deve correr na Justiça Estadual ou na Federal?", "expected": ["stf:sv:27"]}
+{"id": "stf-02", "question": "O depositário infiel ainda pode ser preso?", "expected": ["stf:sv:25"]}

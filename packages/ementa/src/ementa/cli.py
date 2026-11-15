@@ -63,12 +63,12 @@ SMOKE_FILE = Path(__file__).resolve().parents[4] / "evals" / "smoke_cdc.jsonl"
 
 
 def _smoke(args: argparse.Namespace, settings: Settings) -> int:
-    """Smoke questions: expected article in the top 5 and, with the agent, in the citations."""
+    """Smoke questions: expected source in the top 5 and, with the agent, in the citations."""
     from ementa.knowledge import article_of
     from ementa.services import knowledge_base, legal_research_agent
 
     cases = [
-        json.loads(line) for line in SMOKE_FILE.read_text(encoding="utf-8").splitlines() if line
+        json.loads(line) for line in args.file.read_text(encoding="utf-8").splitlines() if line
     ]
     rows = []
     for case in cases:
@@ -99,7 +99,10 @@ def _smoke(args: argparse.Namespace, settings: Settings) -> int:
     top5 = sum(r["top5"] for r in rows)
     mrr = sum(1 / r["rank"] for r in rows if r["rank"]) / len(rows)
     top1 = sum(r["rank"] == 1 for r in rows)
-    summary = f"top1 {top1}/{len(rows)}, top5 {top5}/{len(rows)}, MRR@5 {mrr:.2f}"
+    summary = (
+        f"top1 {top1}/{len(rows)}, top5 {top5}/{len(rows)} (recall@5 {top5 / len(rows):.2f}), "
+        f"MRR@5 {mrr:.2f}"
+    )
     if not args.retrieval_only:
         summary += f", citada {sum(r['cited'] for r in rows)}/{len(rows)}"
         summary += f", removidas {sum(r['removed'] for r in rows)}"
@@ -122,8 +125,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     ask = sub.add_parser("ask", help="ask the legal_research agent")
     ask.add_argument("question")
 
-    smoke = sub.add_parser("smoke", help="run the smoke questions in evals/smoke_cdc.jsonl")
+    smoke = sub.add_parser("smoke", help="run the questions of an evals/*.jsonl file")
     smoke.add_argument("--retrieval-only", action="store_true", help="search only, no model calls")
+    smoke.add_argument(
+        "--file", type=Path, default=SMOKE_FILE, help="question file (default: smoke_cdc.jsonl)"
+    )
 
     args = parser.parse_args(argv)
     if isinstance(sys.stdout, io.TextIOWrapper):
