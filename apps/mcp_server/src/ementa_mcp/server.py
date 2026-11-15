@@ -1,5 +1,6 @@
-"""Entry point of `ementa-mcp`: the Ementa tools over MCP (stdio in F1)."""
+"""Entry point of `ementa-mcp`: the Ementa tools over MCP, on stdio or Streamable HTTP."""
 
+import argparse
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import date
@@ -127,10 +128,33 @@ def build_server(
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(prog="ementa-mcp")
+    parser.add_argument(
+        "--http",
+        action="store_true",
+        help="serve Streamable HTTP (stateless, spec 2026-07-28) instead of stdio",
+    )
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8001)
+    args = parser.parse_args()
+
     settings = get_settings()
     setup(settings)
-    get_logger(__name__).info("mcp_server_starting", transport="stdio")
-    build_server().run("stdio")
+    server = build_server()
+    if args.http:
+        get_logger(__name__).info(
+            "mcp_server_starting", transport="streamable-http", port=args.port
+        )
+        server.run(
+            "streamable-http",
+            host=args.host,
+            port=args.port,
+            stateless_http=True,
+            json_response=True,
+        )
+    else:
+        get_logger(__name__).info("mcp_server_starting", transport="stdio")
+        server.run("stdio")
 
 
 if __name__ == "__main__":
