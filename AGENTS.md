@@ -47,6 +47,10 @@ uv run ementa-api                                # API REST em http://127.0.0.1:
 uv run ementa-mcp --http                         # o mesmo MCP em Streamable HTTP, porta 8001
 uv run lint-imports                              # contratos de dependência entre pacotes
 uvx pre-commit install                           # uma vez por clone: ruff e higiene a cada commit
+
+# A partir da F3
+uv run ementa seed-users                         # seis usuários fictícios em firm.users (senhas na doc de segurança)
+uv run ementa audit verify                       # confere a cadeia de hash de audit.events
 ```
 
 A avaliação das 30 perguntas roda no GitHub Actions (`evals.yml`) com o rótulo `avaliar` no PR, toda noite ou na mão. A parte com o modelo precisa do segredo `OPENAI_API_KEY` no repositório e para no teto de custo.

@@ -542,6 +542,8 @@ O loader de runtime (`ementa_kit.skills`, F2):
 | Rota | Faz | Fase |
 |---|---|---|
 | `POST /v1/legal-research` | Pesquisa com citações | F2 |
+| `POST /v1/auth/token` | Login OAuth2 de senha; devolve JWT de 15 minutos | F3 |
+| `GET /v1/audit/events` | Trilha de auditoria, paginada por cursor (sócia, DPO e TI) | F3 |
 | `POST /v1/chat` | Conversa com o `assistant`, em SSE | F3 |
 | `GET /v1/threads/{id}` | Histórico de uma conversa | F3 |
 | `POST /v1/documents` | Upload e ingestão em fila | F3 |
