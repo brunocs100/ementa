@@ -4,11 +4,16 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from langgraph.store.postgres import PostgresStore
+
 from ementa.agents.legal_research import LegalResearchAgent
 from ementa.agents.legal_research.graph import CONTEXT_LIMIT
 from ementa.knowledge import KnowledgeBase
+from ementa.memory import EXTRACT_PROMPT, subject_key
+from ementa.prompts import get_prompt
 from ementa_kit.config import get_settings
 from ementa_kit.llm import ModelRegistry
+from ementa_kit.memory import MemoryWriter, open_postgres_store
 from ementa_kit.rag import FastEmbedder, FastReranker, PgHybridStore
 from ementa_kit.skills import SkillLibrary
 from ementa_kit.telemetry import instrument_openai
@@ -20,9 +25,15 @@ SKILLS_DIR = Path(__file__).resolve().parents[4] / "skills"
 
 
 @lru_cache
+def local_embedder() -> FastEmbedder:
+    """The local embedder, loaded once per process and shared by the corpus and the memory."""
+    return FastEmbedder(get_settings().embedding_model)
+
+
+@lru_cache
 def knowledge_base() -> KnowledgeBase:
     settings = get_settings()
-    embedder = FastEmbedder(settings.embedding_model)
+    embedder = local_embedder()
     reranker = FastReranker(settings.rerank_model) if settings.rerank_enabled else None
     return KnowledgeBase(
         PgHybridStore(settings.database_url, embedder.dim),
@@ -66,3 +77,28 @@ def private_legal_research() -> "PrivateResearcher":
     from ementa.pii import PrivateResearcher
 
     return PrivateResearcher(legal_research_agent())
+
+
+@lru_cache
+def memory_store() -> PostgresStore:
+    """Long-term memory: the LangGraph store in the `langgraph` schema, indexed by the local
+    embedder. The first call opens a connection pool and runs the store migrations; reading the
+    memories for a user or a case is `ementa.memory.relevant_memories(memory_store(), ...)`."""
+    return open_postgres_store(get_settings().database_url, local_embedder())
+
+
+@lru_cache
+def memory_writer() -> MemoryWriter:
+    """Writes what a finished turn taught; the `fast` model sees only pseudonymized text."""
+    from ementa.pii import pii_guard
+
+    settings = get_settings()
+    return MemoryWriter(
+        memory_store(),
+        model_registry(),
+        pii_guard,
+        get_prompt(*EXTRACT_PROMPT),
+        subject_key=subject_key(settings),
+        similarity=settings.memory_dedupe_similarity,
+        min_confidence=settings.memory_min_confidence,
+    )

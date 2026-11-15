@@ -14,6 +14,8 @@ from ementa_kit.guardrails.pii.guard import (
     PiiGuard,
     Pseudonymized,
     build_pii_guard,
+    canonical_value,
+    find_markers,
     rehydrate,
 )
 from ementa_kit.guardrails.pii.recognizers import (
@@ -31,6 +33,8 @@ __all__ = [
     "PiiGuard",
     "Pseudonymized",
     "build_pii_guard",
+    "canonical_value",
+    "find_markers",
     "is_valid_cnpj",
     "is_valid_cpf",
     "rehydrate",

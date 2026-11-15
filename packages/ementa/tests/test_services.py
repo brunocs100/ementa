@@ -33,11 +33,12 @@ def build(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., LegalResear
 
     for name in ("ENABLED", "MODEL", "CANDIDATES", "TOP_K"):
         monkeypatch.delenv(f"EMENTA_RERANK_{name}", raising=False)
-    services.knowledge_base.cache_clear()
-    services.legal_research_agent.cache_clear()
+    caches = (services.local_embedder, services.knowledge_base, services.legal_research_agent)
+    for cached in caches:
+        cached.cache_clear()
     yield agent
-    services.knowledge_base.cache_clear()
-    services.legal_research_agent.cache_clear()
+    for cached in caches:
+        cached.cache_clear()
 
 
 def test_rerank_is_on_with_the_default_settings(
