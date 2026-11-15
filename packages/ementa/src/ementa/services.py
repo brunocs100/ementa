@@ -29,6 +29,7 @@ def knowledge_base() -> KnowledgeBase:
         embedder,
         reranker,
         candidates=settings.rerank_candidates,
+        margin=settings.rerank_margin,
     )
 
 

@@ -9,6 +9,7 @@ from ementa_kit.telemetry import get_tracer
 _ARTICLE_OF = re.compile(r"^([a-z]+:art\d+(?:-[A-Z])?)")
 
 RERANK_CANDIDATES = 30  # fused hits the cross-encoder scores
+RERANK_MARGIN = 5.0  # keep hits scored within this of the best one
 
 tracer = get_tracer(__name__)
 
@@ -31,17 +32,21 @@ class KnowledgeBase:
         embedder: Embedder,
         reranker: Reranker | None = None,
         candidates: int = RERANK_CANDIDATES,
+        margin: float = RERANK_MARGIN,
     ) -> None:
         self.store = store
         self.embedder = embedder
         self.reranker = reranker
         self.candidates = candidates
+        self.margin = margin
 
     def search(self, queries: Sequence[str], limit: int = 5) -> list[Hit]:
         """Hybrid search for each query, RRF across the queries, then the rerank, if any.
 
         The cross-encoder scores the top `candidates` of the fusion against the first query, the
-        question as asked (the others are rewrites that only widen the net), and keeps `limit`.
+        question as asked (the others are rewrites that only widen the net), and keeps up to
+        `limit`, dropping hits scored more than `margin` below the best: noise in the context
+        costs tokens and can mislead the model.
         """
         fetch = max(limit, self.candidates) if self.reranker is not None else limit * 2
         with tracer.start_as_current_span(
@@ -75,12 +80,14 @@ class KnowledgeBase:
                 "ementa.retrieval.mode": "rerank",
                 "ementa.rerank.model": reranker.model_name,
                 "ementa.rerank.candidates": len(hits),
+                "ementa.rerank.margin": self.margin,
             },
         ) as span:
             scores = reranker.score(query, [passage(h) for h in hits])
             # sorted() is stable: hits with the same score keep the fused order.
             ranked = sorted(zip(scores, hits, strict=True), key=lambda pair: -pair[0])
-            result = [hit for _, hit in ranked[:limit]]
+            best = ranked[0][0] if ranked else 0.0
+            result = [hit for score, hit in ranked[:limit] if score >= best - self.margin]
             span.set_attribute("ementa.rerank.kept", len(result))
             return result
 

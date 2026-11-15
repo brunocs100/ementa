@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     rerank_model: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
     rerank_candidates: int = Field(default=30, ge=1)  # fused hits the cross-encoder scores
     rerank_top_k: int = Field(default=8, ge=1)  # hits kept for the agent context
+    # Drop hits scored more than this below the best one: on the 30 golden questions the
+    # expected source was never more than 3.4 below, and the context fell from 8 to 4.7 hits.
+    rerank_margin: float = Field(default=5.0, gt=0)
 
     # Model per role (ADR 0005). Ids checked against the OpenAI /v1/models list on 2026-11-15.
     model_reasoning: str = "gpt-6.1-terra"

@@ -56,6 +56,17 @@ Escolha: `mmarco-mMiniLMv2-L12-H384-v1` (Apache-2.0), ligado por padrão. Empata
 
 Configuração: `EMENTA_RERANK_ENABLED` (padrão `true`), `EMENTA_RERANK_MODEL`, `EMENTA_RERANK_CANDIDATES` (30, os candidatos da fusão que o cross-encoder lê) e `EMENTA_RERANK_TOP_K` (8, as fontes que vão para o contexto do agente). Com várias consultas, o cross-encoder compara os candidatos com a pergunta como foi feita, não com as reescritas. Desligado, a busca é a da F1: fusão RRF e 5 fontes no contexto. O span `retrieval rerank` grava o modelo e quantos candidatos entraram e ficaram; a duração do span é a latência. Para reproduzir a qualidade: `uv run ementa smoke --retrieval-only`, com `EMENTA_RERANK_ENABLED=false` para a linha de base e `EMENTA_RERANK_MODEL` para trocar o modelo.
 
+## Corte por nota do rerank (15/11/2026)
+
+Com o corpus inteiro, os 8 trechos mantidos traziam ruído: numa pergunta sobre arrependimento, só o `cdc:art49` tinha a ver, e os outros 7 eram artigos do CPC. O rerank agora descarta o que fica mais de `EMENTA_RERANK_MARGIN` (5,0) abaixo da melhor nota. Nas 30 perguntas, a fonte esperada nunca ficou mais de 3,4 abaixo da melhor; a busca segue com recall@5 de 1,00 e o contexto cai de 8 para 4,7 trechos em média. Medição só da busca, sem chamada de modelo.
+
+| Margem | Recall@5 | Trechos no contexto (média) |
+|---|---|---|
+| 3 | 29/30 | 2,8 |
+| 4 | 30/30 | 3,7 |
+| 5 (padrão) | 30/30 | 4,7 |
+| sem corte | 30/30 | 8,0 |
+
 ## Alternativas consideradas
 
 | Alternativa | A favor | Contra | Por que não agora |
