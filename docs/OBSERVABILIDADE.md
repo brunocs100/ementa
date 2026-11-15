@@ -25,8 +25,9 @@ A instrumentação segue as convenções semânticas de GenAI do OpenTelemetry. 
 | `invoke_agent` | Início de uma execução de agente | `gen_ai.operation.name`, `gen_ai.agent.name`, `gen_ai.conversation.id`, `ementa.cost_usd` (soma) |
 | `chat` | Cada chamada a modelo | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `ementa.prompt.id`, `ementa.prompt.version`, `ementa.policy.route`, `ementa.cost_usd` |
 | `execute_tool` | Cada ferramenta | `gen_ai.tool.name`, classe de dado, resultado (ok ou erro), tamanho da saída |
-| `retrieval` | Cada busca na base de conhecimento | Modo (vetorial, textual, fusão, rerank), top_k, ids das fontes, duração por etapa |
+| `retrieval` | Cada busca na base de conhecimento ou na memória (`retrieval memory`) | Modo (vetorial, textual, fusão, rerank), top_k, ids das fontes, duração por etapa |
 | `guardrail` | Cada verificação do pipeline | Nome da verificação, `ementa.guardrail.decision`, motivo |
+| `memory` | Escrita da memória depois da execução (`memory write`) e esquecimento de um titular (`memory forget`) | `ementa.memory.operation` e contagens; nunca texto nem id de titular |
 
 Atributos próprios do projeto:
 
@@ -42,6 +43,10 @@ Atributos próprios do projeto:
 | `ementa.pii.total` | int | `4`, valores trocados por marcador na chamada |
 | `ementa.context.section_tokens` | evento no span corrente (`invoke_agent`), com `<seção>.chars` e `<seção>.tokens` (aproximado, 4 caracteres por token) | `{"system.chars": 1245, "system.tokens": 312, "fontes.tokens": 3100, "pergunta.tokens": 14, ...}` |
 | `ementa.case.pseudo_id` | string | Hash do id do processo, nunca o número real |
+| `ementa.memory.candidates`, `ementa.memory.inserted`, `ementa.memory.updated` | int | Candidatas do modelo, memórias novas e memórias substituídas num turno |
+| `ementa.memory.removed` | int | Memórias apagadas num esquecimento; o span não leva mais nada |
+| `ementa.memory.hits` | int | Memórias que a busca trouxe |
+| `ementa.context.compacted` | evento no span corrente, com `messages.before`, `tokens.before`, `tokens.after` e o prompt do resumo | `{"messages.before": 41, "tokens.before": 9120, "tokens.after": 520, ...}` |
 
 As chamadas à OpenAI usam a instrumentação oficial (`opentelemetry-instrumentation-openai-v2` 2.4b0, que cobre Chat Completions e embeddings; a Responses API não é coberta, por isso a F1 usa Chat Completions). FastAPI, httpx e psycopg entram com instrumentação automática.
 
@@ -164,7 +169,7 @@ models:
 | F0 | Container `otel-lgtm` no perfil `obs`, setup do OTel no kit, structlog |
 | F1 | Spans `invoke_agent`, `chat`, `execute_tool`, `retrieval` e `guardrail` de citações; custo por chamada; trace da demo no Grafana Explore |
 | F2 | Evento `ementa.context.section_tokens`, `ementa.prompt.id` e versão, span de PII |
-| F3 | Orçamento com métrica `ementa_budget_remaining_usd` e parada automática |
+| F3 | Orçamento com métrica `ementa_budget_remaining_usd` e parada automática; spans da memória e evento `ementa.context.compacted` |
 | F6 | `ementa.policy.route` e alerta de rota em contexto sigiloso |
 | F7 | Dashboards completos, SLOs por rota, alertas, atribuição de custo por área e advogado, runbooks |
 
