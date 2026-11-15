@@ -1,0 +1,3 @@
+# Entry point for `docker compose` at the repo root. Services live in infra/compose.yaml.
+include:
+  - infra/compose.yaml

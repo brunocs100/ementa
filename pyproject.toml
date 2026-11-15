@@ -1,0 +1,50 @@
+[project]
+name = "ementa-workspace"
+version = "0.0.0"
+description = "Workspace root for the Ementa monorepo"
+requires-python = ">=3.12,<3.13"
+dependencies = ["ementa-kit", "ementa", "ementa-mcp"]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*", "apps/*"]
+
+[tool.uv.sources]
+ementa-kit = { workspace = true }
+ementa = { workspace = true }
+ementa-mcp = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "mypy>=1.18",
+    "pytest>=8.4",
+    "ruff>=0.14",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ementa", "ementa_kit", "ementa_mcp"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["packages", "apps"]
+addopts = ["--import-mode=importlib", "--strict-markers"]
+markers = [
+    "integration: needs Postgres or another service",
+    "eval: calls a real model and spends API budget",
+]

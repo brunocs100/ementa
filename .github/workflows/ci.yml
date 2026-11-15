@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    env:
+      EMENTA_ENV: ci
+      EMENTA_OTEL_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy packages apps
+      - run: uv run pytest -m "not eval"
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start core and obs profiles and wait until healthy
+        run: docker compose --profile core --profile obs up -d --wait --wait-timeout 300
+      - name: Check extensions
+        run: >
+          docker compose exec -T postgres
+          psql -U ementa -d ementa -tAc
+          "select string_agg(extname, ',' order by extname) from pg_extension"
+          | grep -q "unaccent,vector"
+      - if: always()
+        run: docker compose --profile core --profile obs down -v

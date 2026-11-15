@@ -4,7 +4,7 @@ Onde cada competência de Engenheiro de Agentes de IA aparece na Ementa, em que 
 
 **Status:** Documentado (atualizada a cada fase) · **Ver também:** [Resumo](RESUMO.md), [Plano](PLANO.md), [Roteiro da demo](ROTEIRO-DEMO.md)
 
-A matriz é honesta: o status reflete o que existe hoje no repositório, não o que está planejado. Hoje o desenho está completo nos docs e o código começa na F0.
+A matriz é honesta: o status reflete o que existe hoje no repositório, não o que está planejado. Hoje o desenho está completo nos docs e o esqueleto da F0 (workspace, settings, telemetria, Compose, CI e servidor MCP vazio) está no repositório.
 
 | Status | Significado |
 |---|---|
@@ -19,7 +19,7 @@ A matriz é honesta: o status reflete o que existe hoje no repositório, não o 
 |---|---|---|---|---|
 | Desenvolvimento e arquitetura de soluções corporativas | Portas e adaptadores (hexagonal), diagramas C4, 12 ADRs, kit separado do domínio; [Arquitetura](ARQUITETURA.md) | F0 em diante | Abrir a arquitetura de referência e um ADR com alternativas e consequências | Documentado |
 | Python, C# e/ou Java, com boas práticas de engenharia e padrões de projeto | Python 3.12 tipado (mypy strict a partir da F2), ruff, import-linter; Strategy (provedores de modelo), Adapter (armazenamentos), Chain of Responsibility (guardrails), Repository, Builder (`AgentFactory`), Template Method (template de agente), Observer (eventos de telemetria e auditoria), listados em [Arquitetura](ARQUITETURA.md) | F0 em diante | Mostrar o `AgentFactory` e o pipeline de guardrails; regras de dependência quebrando o CI | Documentado |
-| APIs REST, Git/GitHub, integração contínua e testes automatizados | FastAPI (`POST /v1/legal-research` na F2, rotas `/v1` na F3), GitHub Actions (`ci.yml` na F0, `evals.yml` e gitleaks e pip-audit na F2, `security.yml` completo na F10), pytest, Hypothesis, testcontainers | F0, F2, F3, F10 | CI verde no GitHub; teste fixo do prazo; teste de integração da busca | Documentado |
+| APIs REST, Git/GitHub, integração contínua e testes automatizados | FastAPI (`POST /v1/legal-research` na F2, rotas `/v1` na F3), GitHub Actions (`ci.yml` na F0, `evals.yml` e gitleaks e pip-audit na F2, `security.yml` completo na F10), pytest, Hypothesis, testcontainers | F0, F2, F3, F10 | CI verde no GitHub; teste fixo do prazo; teste de integração da busca | Em andamento |
 | IA generativa, LLMs, engenharia de prompt e de contexto | Prompts versionados (id, versão, changelog); montador de contexto `ementa_kit.context` com orçamento por seção; histórico só de acréscimo | F1, F2, F3 | Trace com o tamanho de cada seção do contexto; teste do prefixo no CI | Documentado |
 | RAG, embeddings, bases vetoriais, function calling e memória de agentes | `legal_research`; embeddings locais; pgvector + FTS + RRF; Structured Outputs e function calling `strict`; checkpointer e store do LangGraph | F1, F2, F3 | Demo passo 1 (resposta com `cdc:art49` verificado); demo passo 2 (`calculate_deadline`) | Documentado |
 | Desenvolvimento e sustentação de agentes de IA em ambiente produtivo | Docker Compose por perfis, timeouts, retries, fallback, orçamento com parada automática, SLOs por rota, runbooks, auditoria | F3, F7 | Dashboard de custo e erro; alerta de orçamento; runbook de incidente em [Segurança e governança](SEGURANCA-E-GOVERNANCA.md); runbooks de operação na F7 | Documentado |
@@ -31,7 +31,7 @@ A matriz é honesta: o status reflete o que existe hoje no repositório, não o 
 
 | Competência | Onde no projeto | Fase | Como demonstrar | Status |
 |---|---|---|---|---|
-| Ecossistema GitHub Copilot e VS Code | `AGENTS.md`, `.vscode/mcp.json`, instruções por caminho, prompt files, custom agents, skills de desenvolvimento | F0, F1, F8 | Copilot em modo agente usando o `ementa-mcp`; skill `new-mcp-tool` gerando uma ferramenta no padrão do repo | Documentado |
+| Ecossistema GitHub Copilot e VS Code | `AGENTS.md`, `.vscode/mcp.json`, instruções por caminho, prompt files, custom agents, skills de desenvolvimento | F0, F1, F8 | Copilot em modo agente usando o `ementa-mcp`; skill `new-mcp-tool` gerando uma ferramenta no padrão do repo | Em andamento |
 | LangGraph | Todos os agentes: `StateGraph`, checkpointer, `interrupt()`, `Send`, subgrafos | F1 em diante | Grafo do `legal_research` com laço de reflexão; `brief_drafting` retomado após aprovação | Documentado |
 | LangChain | Chat models (ChatOpenAI, ChatOllama, ChatAnthropic), ferramentas, middleware dos guardrails | F1 em diante | Troca de provedor só por configuração; [ADR 0005](adr/0005-camada-de-modelos-agnostica.md) | Documentado |
 | Semantic Kernel | `lgpd_compliance` consumindo o `ementa-mcp`, com porte para o Microsoft Agent Framework 1.x | F8 | Agente SK chamando as mesmas ferramentas MCP; [ADR 0009](adr/0009-semantic-kernel-e-agent-framework.md) | Documentado |

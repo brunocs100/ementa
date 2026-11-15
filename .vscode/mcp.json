@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "ementa": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "ementa-mcp"],
+      "envFile": "${workspaceFolder}/.env"
+    }
+  }
+}
