@@ -6,20 +6,12 @@ every request runs as the development user below.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import StrEnum
 
 from fastapi import Depends, HTTPException
 
+from ementa.domain.access import Role
 
-class Role(StrEnum):
-    """Roles of the fictitious firm (docs/SEGURANCA-E-GOVERNANCA.md, RBAC matrix)."""
-
-    SOCIA = "socia"
-    ASSOCIADO = "associado"
-    ESTAGIARIO = "estagiario"
-    CONTROLADORIA = "controladoria"
-    DPO = "dpo"
-    TI = "ti"
+__all__ = ["DEV_USER", "Role", "User", "current_user", "require_roles"]
 
 
 @dataclass(frozen=True)
