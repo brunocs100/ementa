@@ -27,11 +27,9 @@ def _ingest(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def _search(args: argparse.Namespace, settings: Settings) -> int:
-    from ementa.knowledge import KnowledgeBase
+    from ementa.services import knowledge_base
 
-    embedder = FastEmbedder(settings.embedding_model)
-    kb = KnowledgeBase(_store(settings, embedder), embedder)
-    for rank, hit in enumerate(kb.search([args.query], limit=args.k), start=1):
+    for rank, hit in enumerate(knowledge_base().search([args.query], limit=args.k), start=1):
         first_line = hit.text.splitlines()[0][:110]
         print(
             f"{rank}. {hit.id:<14} {hit.score:.4f} "
@@ -99,7 +97,8 @@ def _smoke(args: argparse.Namespace, settings: Settings) -> int:
     if not args.retrieval_only:
         summary += f", citada {sum(r['cited'] for r in rows)}/{len(rows)}"
         summary += f", removidas {sum(r['removed'] for r in rows)}"
-    print(f"{summary} ({settings.embedding_model})")
+    rerank = settings.rerank_model if settings.rerank_enabled else "off"
+    print(f"{summary} ({settings.embedding_model}, rerank {rerank})")
     return 0 if top5 == len(rows) else 1
 
 

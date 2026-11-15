@@ -26,7 +26,7 @@ AGENT_ID = "legal_research"
 ANSWER_PROMPT = ("legal_research.answer", 1)
 REWRITE_PROMPT = ("legal_research.rewrite", 1)
 MAX_ATTEMPTS = 2  # first answer plus one retry
-CONTEXT_LIMIT = 5
+CONTEXT_LIMIT = 5  # sources in the context without the rerank (F1); with it, rerank_top_k
 MAX_REWRITES = 3
 
 NOTICE = "Rascunho para conferência do advogado responsável. Não é aconselhamento jurídico."
@@ -123,9 +123,12 @@ def feedback(removed: Sequence[RemovedCitation]) -> str:
 
 
 class LegalResearchAgent:
-    def __init__(self, retriever: Retriever, models: ModelRegistry) -> None:
+    def __init__(
+        self, retriever: Retriever, models: ModelRegistry, context_limit: int = CONTEXT_LIMIT
+    ) -> None:
         self.retriever = retriever
         self.models = models
+        self.context_limit = context_limit
         self.answer_prompt = get_prompt(*ANSWER_PROMPT)
         self.rewrite_prompt = get_prompt(*REWRITE_PROMPT)
         self.graph = self._build()
@@ -157,7 +160,7 @@ class LegalResearchAgent:
         return {"queries": list(dict.fromkeys([question, *rewrites]))}
 
     def retrieve(self, state: State) -> State:
-        return {"hits": self.retriever.search(state["queries"], limit=CONTEXT_LIMIT)}
+        return {"hits": self.retriever.search(state["queries"], limit=self.context_limit)}
 
     def assemble_context(self, state: State) -> State:
         sources = "\n\n".join(render_source(h) for h in state["hits"]) or "(nenhuma fonte)"
