@@ -151,6 +151,15 @@ O papel da aplicação não é dono das tabelas, então não passa por cima da p
 - O motor de políticas roda antes de cada chamada a modelo: se algum trecho do contexto é `secret`, a rota vira `local` (Ollama). Sem modelo local disponível, a chamada falha com mensagem clara; nunca cai para a nuvem.
 - O atributo `ementa.policy.route` registra a rota no span; o teste da F6 falha se um contexto sigiloso gerar span de provedor de nuvem.
 
+## Documentos enviados pelo escritório (F3)
+
+- `POST /v1/documents` grava o arquivo como `restricted`, com quem enviou como dono (`owner_id`) e na lista de leitura (`acl`). Os chunks herdam o nível e a lista. O RLS que usa essas colunas chega na F6.
+- Até lá os chunks ficam em `firm_knowledge`, fora do `knowledge`: a pesquisa jurídica e as ferramentas MCP, que devolvem dado público, não alcançam documento do escritório.
+- Só quem enviou vê a tarefa; para os outros, `GET /v1/jobs/{id}` responde 404. O mesmo arquivo enviado por duas pessoas vira dois documentos, cada um com seu dono.
+- Nome do arquivo e conteúdo não vão para log, span nem mensagem de erro; o erro de uma tarefa guarda só a classe da exceção ou um motivo fixo.
+- A fila no Redis leva só ids e o contexto do trace, em JSON. O Redis do Compose escuta só em 127.0.0.1, sem senha; em outro ambiente ele precisa de senha e rede privada.
+- Limite de 2 MiB por arquivo. Corpo anunciado maior (`Content-Length`) é recusado antes de ser lido; sem esse cabeçalho, depois da leitura. Um proxy na frente da API deve limitar também. PDF é lido no worker, não na API.
+
 ## Pseudonimização
 
 ```mermaid
@@ -242,13 +251,14 @@ Um job diário confere a cadeia inteira e alerta se encontrar quebra.
 
 | Limite | Valor padrão | Ao estourar |
 |---|---|---|
-| Orçamento diário (dev e CI) | US$ 2 | Para as chamadas e avisa |
-| Orçamento mensal | US$ 30 | Para as chamadas e avisa |
+| Orçamento diário, por ambiente (`EMENTA_BUDGET_DAILY_USD`) | US$ 2 | Recusa a chamada antes do provedor (`BudgetExceededError`; na API, HTTP 429 com `Retry-After`) |
+| Orçamento mensal, por ambiente (`EMENTA_BUDGET_MONTHLY_USD`) | US$ 30 | Igual ao diário |
+| Orçamento por área de atuação (`EMENTA_BUDGET_AREAS`) | Nenhum | Igual, só para as chamadas daquela área |
 | Passos por execução de agente | 12 | Encerra com resposta parcial |
 | Tokens de entrada por chamada | Definido pelo montador de contexto | Corta a seção de menor prioridade |
 | Requisições por usuário | 30 por minuto | HTTP 429 |
 
-O limite de gasto do projeto no painel da OpenAI é a segunda trava, fora do código.
+O limite de gasto do projeto no painel da OpenAI é a segunda trava, fora do código. O aviso em 80% do teto vem com os alertas da F7.
 
 ## Red team
 
