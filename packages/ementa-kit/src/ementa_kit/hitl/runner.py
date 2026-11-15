@@ -174,8 +174,8 @@ class DraftingRunner:
                 graph.invoke(None, config)
             progress = self._settle(run, agent, config)
             span.set_attribute("ementa.run.status", str(progress.run.status))
-        if approval is not None:
-            self._remember(approval)
+            if approval is not None:
+                self._remember(approval)
         return progress
 
     def _decided(self, run: Run, approval_id: str) -> Approval:
@@ -207,8 +207,10 @@ class DraftingRunner:
             pending = [self._open(run, interrupt) for interrupt in snapshot.interrupts]
             self.store.update_run(run.id, RunStatus.AWAITING_APPROVAL)
             return Progress(replace(run, status=RunStatus.AWAITING_APPROVAL), pending)
-        if snapshot.next:
-            raise RuntimeError("the graph stopped before its end without asking for approval")
+        if snapshot.next:  # a breakpoint, not a question: another try would only step past it
+            raise DraftingRunError(
+                f"{run.agent} stopped before its end without asking for approval."
+            )
         last = self.store.last_decided(run.id)
         if last is None:
             raise DraftingRunError(

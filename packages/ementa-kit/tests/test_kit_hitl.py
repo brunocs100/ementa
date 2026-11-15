@@ -71,6 +71,7 @@ class FakeBriefs:
         named: str = AGENT,
         flaky: int = 0,
         raw_interrupt: bool = False,
+        breakpoint_before: str | None = None,
     ) -> None:
         self.redraft = redraft
         self.ask = ask
@@ -88,7 +89,8 @@ class FakeBriefs:
         graph.add_edge("write", "review")
         graph.add_conditional_edges("review", self.after_review, ["write", END])
         self.graph: CompiledStateGraph[Any, Any, Any, Any] = graph.compile(
-            checkpointer=InMemorySaver()
+            checkpointer=InMemorySaver(),
+            interrupt_before=[breakpoint_before] if breakpoint_before else None,
         )
 
     def plan(self, state: Draft) -> Draft:
@@ -436,8 +438,9 @@ def test_an_agent_that_ends_without_asking_fails_the_run() -> None:
     [
         (FakeBriefs(raw_interrupt=True), "an interrupt that is not an approval request"),
         (FakeBriefs(named="contract_review"), "names the agent 'contract_review'"),
+        (FakeBriefs(breakpoint_before="review"), "stopped before its end without asking"),
     ],
-    ids=["raw-interrupt", "other-agent"],
+    ids=["raw-interrupt", "other-agent", "breakpoint"],
 )
 def test_an_interrupt_the_runner_cannot_take_fails_the_run(agent: FakeBriefs, error: str) -> None:
     d = desk(agent)
