@@ -18,6 +18,7 @@ ementa-mcp = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.140",
     "mypy>=1.18",
     "pytest>=8.4",
     "ruff>=0.14",
