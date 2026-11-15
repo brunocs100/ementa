@@ -138,7 +138,9 @@ class RecordingWriter:
 def test_the_assistant_opens_the_memory_on_the_first_turn_and_writes_when_enabled(
     monkeypatch: pytest.MonkeyPatch, write: bool
 ) -> None:
-    settings = Settings(_env_file=None, memory_write_enabled=write)  # type: ignore[call-arg]
+    settings = Settings(  # type: ignore[call-arg]
+        _env_file=None, memory_write_enabled=write, context_budget_tokens=5000
+    )
     chat = GenericFakeChatModel(messages=iter([AIMessage("Bom dia.")]))
     writer = RecordingWriter()
     opened: list[str] = []
@@ -163,6 +165,7 @@ def test_the_assistant_opens_the_memory_on_the_first_turn_and_writes_when_enable
     try:
         agent = services.assistant_agent()
         assert opened == []  # nothing opens with the assistant
+        assert agent.context_budget == 5000
         events = list(agent.chat("Bom dia", user_id="ana", allowed_tools=[]))
         first_turn = list(opened)
         last = events[-1]

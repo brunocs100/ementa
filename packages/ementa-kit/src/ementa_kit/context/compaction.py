@@ -9,8 +9,9 @@ the new conversation keeps the same system prompt.
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import Runnable
 from opentelemetry import trace
 
 from ementa_kit.context.assembler import Section, approx_tokens
@@ -38,7 +39,7 @@ def conversation_tokens(messages: Sequence[BaseMessage]) -> int:
 
 def compact(
     messages: Sequence[BaseMessage],
-    model: BaseChatModel,
+    model: Runnable[LanguageModelInput, BaseMessage],
     prompt: Prompt,
     *,
     budget: int,
@@ -50,6 +51,8 @@ def compact(
 
     Call it between turns, before the next question goes in. `messages` are left as they are;
     the `ementa.context.compacted` event on the current span records the sizes and the prompt.
+    `model` may carry the conversation's tools, bound with `tool_choice="none"`, so the request
+    keeps the whole prefix the provider has cached, tool list included.
     """
     before = conversation_tokens(messages)
     if before <= budget:

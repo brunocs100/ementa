@@ -40,14 +40,28 @@ from ementa.agents.assistant import (
     TokenEvent,
 )
 from ementa.agents.assistant import graph as assistant_graph
-from ementa.agents.assistant.graph import DENIED, FAILED, INTERRUPTED, MALFORMED, MAX_ROUNDS
+from ementa.agents.assistant.graph import (
+    DENIED,
+    FAILED,
+    INTERRUPTED,
+    MALFORMED,
+    MAX_ROUNDS,
+    SUMMARY_PROMPT,
+    SUPERVISOR_PROMPT,
+    TOOLS,
+)
 from ementa.agents.legal_research import Citation, LegalResearchAgent, ResearchAnswer
 from ementa.agents.legal_research import graph as research_graph
 from ementa.memory import EXTRACT_PROMPT, FIRM, case, lawyer, relevant_memories
 from ementa.pii import pii_guard
 from ementa.prompts import get_prompt
 from ementa_kit.config import Settings
-from ementa_kit.context import assert_append_only
+from ementa_kit.context import (
+    COMPACTED_EVENT,
+    approx_tokens,
+    assert_append_only,
+    conversation_tokens,
+)
 from ementa_kit.llm import ModelRegistry, ModelRole, ModelSpec, ModelUnavailableError
 from ementa_kit.memory import MemoryWriter, Namespace, memory_value, postgres_checkpointer
 from ementa_kit.rag import Hit
@@ -159,6 +173,7 @@ def make_agent(
     *,
     memories: Callable[[], BaseStore] | None = None,
     writer: Callable[[], MemoryWriter] | None = None,
+    context_budget: int | None = None,
 ) -> tuple[AssistantAgent, ScriptedChat, FakeResearcher]:
     fast = ScriptedChat(replies=replies)
     research = researcher or FakeResearcher()
@@ -169,6 +184,7 @@ def make_agent(
         pii_guard,
         memories=memories,
         writer=writer,
+        context_budget=context_budget,
     )
     return agent, fast, research
 
@@ -553,6 +569,82 @@ def test_a_memory_store_that_fails_costs_the_turn_its_memories_not_its_reply() -
     assert warnings == each_turn * 2
 
 
+# Compaction ---------------------------------------------------------------------------------
+
+FACTS = ("Sou Maria Souza. Comprei um sofá pela internet e ele chegou rasgado. " * 6).strip()
+NOTED = "Entendi, [PESSOA_1]: o sofá comprado pela internet chegou rasgado. " * 4
+SUMMARY = "- [PESSOA_1] comprou um sofá pela internet e ele chegou rasgado."
+# The first turn passes it; the summary and two short turns after it do not.
+BUDGET = approx_tokens(get_prompt(*SUPERVISOR_PROMPT).text) + 120
+
+
+def test_past_the_context_budget_the_next_turn_starts_from_a_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(assistant_graph, "tracer", provider.get_tracer("test"))
+    replies = [NOTED, SUMMARY, "Pode, [PESSOA_1].", "Em 7 dias."]
+    agent, fast, _ = make_agent([AIMessage(r) for r in replies], context_budget=BUDGET)
+
+    thread = done(list(agent.chat(FACTS, user_id="ana"))).thread_id
+    second = list(agent.chat("Posso desistir?", user_id="ana", thread_id=thread))
+    list(agent.chat("Em quanto tempo?", user_id="ana", thread_id=thread))
+
+    first, summarize, after, then = fast.calls
+    old = summarize[:-1]  # the first turn as the model saw it, with its reply
+    assert_append_only([first, summarize])  # the summary was asked for by appending its prompt
+    assert summarize[-1].text == get_prompt(*SUMMARY_PROMPT).text
+    assert fast.offered[1] == (list(TOOLS), "none")  # the same tools, so the prefix holds
+    assert [(m.type, m.text) for m in after] == [
+        ("system", first[0].text),
+        ("human", f"<resumo>\n{SUMMARY}\n</resumo>"),
+        ("human", "Posso desistir?"),
+    ]
+    assert after[0] == first[0]  # the frozen system prompt opens the new view
+    assert conversation_tokens(after) < BUDGET < conversation_tokens(old)  # the view shrank
+    assert_append_only([after, then])  # after the compaction, requests only append again
+    assert done(second).message == "Pode, Maria Souza."  # the markers outlive the summary
+    stored = agent.graph.get_state({"configurable": {"thread_id": thread}}).values["messages"]
+    assert stored[: len(old)] == old  # the state keeps the whole thread, for audit
+    assert [m.type for m in stored[len(old) :]] == ["human", "human", "ai", "human", "ai"]
+    history = agent.history(thread, user_id="ana")
+    assert [m.content for m in history.messages if m.role == "user"] == [
+        FACTS,
+        "Posso desistir?",
+        "Em quanto tempo?",
+    ]
+    [span] = [s for s in exporter.get_finished_spans() if s.events]
+    [event] = span.events
+    assert (span.name, event.name) == ("invoke_agent assistant", COMPACTED_EVENT)
+    assert (event.attributes or {})["messages.before"] == len(old) == 3
+
+
+class NoSummary(ScriptedChat):
+    """A provider that fails the summary request and answers the others."""
+
+    def _reply(self, messages: list[BaseMessage], kwargs: dict[str, Any]) -> AIMessage:
+        if messages[-1].text == get_prompt(*SUMMARY_PROMPT).text:
+            raise RuntimeError("provedor fora do ar")
+        return super()._reply(messages, kwargs)
+
+
+def test_a_summary_that_fails_leaves_the_view_whole() -> None:
+    fast = NoSummary(replies=[AIMessage(NOTED), AIMessage("Pode.")])
+    agent = AssistantAgent(
+        registry_of(fast), FakeResearcher, InMemorySaver(), pii_guard, context_budget=BUDGET
+    )
+
+    with capture_logs() as logs:
+        thread = done(list(agent.chat(FACTS, user_id="ana"))).thread_id
+        second = list(agent.chat("Posso desistir?", user_id="ana", thread_id=thread))
+
+    assert done(second).message == "Pode."
+    assert_append_only(fast.calls)  # the turn appended to the whole view
+    assert ("compaction_failed", "RuntimeError") in [(e["event"], e.get("error")) for e in logs]
+
+
 ART49 = Hit(
     "cdc:art49",
     "cdc",
@@ -672,3 +764,37 @@ def test_a_thread_survives_a_restart(schema: str) -> None:
         "Sim, Maria Souza: os mesmos 7 dias [cdc:art49].",
     ]
     assert [c.source_id for c in history.messages[3].citations] == ["cdc:art49"]
+
+
+@pytest.mark.integration
+def test_a_compacted_thread_survives_a_restart(schema: str) -> None:
+    """The view is derived from the stored state, so a new process sends the same compacted
+    view and goes on appending to it."""
+    before = postgres_checkpointer(DATABASE_URL, schema)
+    agent, fast, _ = make_agent(
+        [AIMessage(NOTED), AIMessage(SUMMARY), AIMessage("Pode, [PESSOA_1].")],
+        checkpointer=before,
+        context_budget=BUDGET,
+    )
+    thread = done(list(agent.chat(FACTS, user_id="ana"))).thread_id
+    list(agent.chat("Posso desistir?", user_id="ana", thread_id=thread))
+    before.conn.close()
+
+    after = postgres_checkpointer(DATABASE_URL, schema)
+    try:
+        restarted, fast_after, _ = make_agent(
+            [AIMessage("Em 7 dias, [PESSOA_1].")], checkpointer=after, context_budget=BUDGET
+        )
+        third = list(restarted.chat("Em quanto tempo?", user_id="ana", thread_id=thread))
+        config: Any = {"configurable": {"thread_id": thread}}
+        stored = restarted.graph.get_state(config).values["messages"]
+    finally:
+        after.conn.close()
+
+    assert_append_only([fast.calls[-1], *fast_after.calls])  # the same view, appended to
+    assert fast_after.calls[0][1].text == f"<resumo>\n{SUMMARY}\n</resumo>"
+    assert done(third).message == "Em 7 dias, Maria Souza."
+    assert [m.type for m in stored] == [
+        *("system", "human", "ai"),  # the first turn, kept in the state
+        *("human", "human", "ai", "human", "ai"),  # the summary and the turns after it
+    ]

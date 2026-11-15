@@ -154,7 +154,8 @@ def checkpointer() -> PostgresSaver:
 def assistant_agent() -> AssistantAgent:
     """The chat supervisor behind `/v1/chat`. The research agent, the PII guard, the memory
     store and the memory writer load on the first turn: reading a thread's history needs none
-    of them. With EMENTA_MEMORY_WRITE_ENABLED=false the turns read memories and write none."""
+    of them. With EMENTA_MEMORY_WRITE_ENABLED=false the turns read memories and write none;
+    past EMENTA_CONTEXT_BUDGET_TOKENS, a thread's next turn starts from a summary."""
     settings = get_settings()
     return AssistantAgent(
         model_registry(),
@@ -163,6 +164,7 @@ def assistant_agent() -> AssistantAgent:
         _pii_guard,
         memories=memory_store,
         writer=memory_writer if settings.memory_write_enabled else None,
+        context_budget=settings.context_budget_tokens,
     )
 
 

@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     # The assistant writes what each finished chat turn taught, one `fast` call after `done`.
     # Off, it still reads the memories: for tests and runs that save the model calls.
     memory_write_enabled: bool = True
+    # Once the model's view of a chat passes this many tokens (approximate, 4 characters each),
+    # the next turn starts it again from a summary. About five turns with research; the floor
+    # keeps room for the system prompt and the summary (800), or every turn would compact.
+    context_budget_tokens: int = Field(default=8000, ge=2000)
     # Key of the HMAC that turns a CPF, a name or an e-mail into the data subject id tagging
     # memories (LGPD forgetting). Required in prod; changing it orphans the ids already stored.
     data_subject_key: SecretStr | None = None
