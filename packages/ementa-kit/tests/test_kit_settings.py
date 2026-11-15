@@ -41,3 +41,17 @@ def test_rejects_unknown_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValueError, match="env"):
         Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_no_skill_script_runs_by_default_and_the_allowlist_is_a_json_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("EMENTA_SKILL_SCRIPTS_ALLOWED", raising=False)
+    assert Settings(_env_file=None).skill_scripts_allowed == []  # type: ignore[call-arg]
+
+    monkeypatch.setenv("EMENTA_SKILL_SCRIPTS_ALLOWED", '["calc/show.py"]')
+    monkeypatch.setenv("EMENTA_SKILL_SCRIPT_TIMEOUT_S", "2.5")
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.skill_scripts_allowed == ["calc/show.py"]
+    assert settings.skill_script_timeout_s == 2.5
