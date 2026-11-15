@@ -66,6 +66,17 @@ def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
     }
 
 
+def stream_problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
+    """The same for a streaming route, whose errors go out before the stream starts. With
+    `model`, FastAPI would file the Problem schema under the route's `text/event-stream`, so it
+    goes by reference; a route using `problem_responses` puts it in the components."""
+    ref = {"$ref": "#/components/schemas/Problem"}
+    return {
+        status: {"content": {PROBLEM_JSON: {"schema": ref}}, "description": _title(status)}
+        for status in statuses
+    }
+
+
 async def _validation(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
     errors = [
@@ -104,20 +115,26 @@ async def _http(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
-async def _model_unavailable(request: Request, exc: Exception) -> JSONResponse:
-    return problem_response(
-        Problem(
+def problem_for(exc: Exception, instance: str) -> Problem:
+    """The problem an unhandled exception becomes. The handlers answer with it; a stream that
+    has already sent its status sends it as its last event."""
+    if isinstance(exc, ModelUnavailableError):
+        return Problem(
             type="/problems/model-unavailable",
             title="Model unavailable",
             status=503,
             detail="The language model is not configured or not reachable.",
-            instance=_instance(request),
+            instance=instance,
         )
-    )
+    return Problem(title=_title(500), status=500, instance=instance)
+
+
+async def _model_unavailable(request: Request, exc: Exception) -> JSONResponse:
+    return problem_response(problem_for(exc, _instance(request)))
 
 
 async def _unexpected(request: Request, exc: Exception) -> JSONResponse:
-    return problem_response(Problem(title=_title(500), status=500, instance=_instance(request)))
+    return problem_response(problem_for(exc, _instance(request)))
 
 
 def install_problem_handlers(app: FastAPI) -> None:

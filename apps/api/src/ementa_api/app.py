@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from ementa import services
 from ementa.agents.legal_research import ResearchAnswer
+from ementa.domain.access import can_use_tool as role_can_use_tool
 from ementa.tools.research import (
     ANSWER_DESCRIPTION,
     AnswerLegalQuestionInput,
@@ -21,12 +22,14 @@ from ementa.users import FirmUser
 from ementa_api.audit import AUDIT_DESCRIPTION, AuditEventOut, AuditMiddleware, AuditPage
 from ementa_api.auth import (
     TOKEN_URL,
+    Role,
     User,
     authorized_user,
     check_jwt_settings,
     create_access_token,
     unauthorized,
 )
+from ementa_api.chat import Assistant, add_chat_routes
 from ementa_api.problems import (
     Problem,
     install_problem_handlers,
@@ -99,7 +102,11 @@ def create_app(
     memory: Callable[[], BaseStore] = services.memory_store,
     users: Callable[[], Authenticator] = services.user_directory,
     audit: Callable[[], AuditLog] = firm_audit_log,
+    assistant: Callable[[], Assistant] = services.assistant_agent,
+    can_use_tool: Callable[[Role, str], bool] = role_can_use_tool,
 ) -> FastAPI:
+    """`can_use_tool(role, tool)` decides which of the assistant's tools a role gets; the
+    default is the permission matrix in `ementa.domain.access`."""
     check_jwt_settings(get_settings())  # fails here, at startup, in prod without a secret
     app = FastAPI(
         title="Ementa API",
@@ -132,6 +139,8 @@ def create_app(
             access_token=create_access_token(user),
             expires_in=60 * get_settings().jwt_ttl_minutes,
         )
+
+    add_chat_routes(app, assistant, can_use_tool)
 
     @app.post(
         "/v1/legal-research",

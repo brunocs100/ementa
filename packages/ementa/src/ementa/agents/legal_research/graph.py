@@ -297,7 +297,9 @@ class LegalResearchAgent:
         graph.add_edge("generate_answer", "verify_citations")
         graph.add_conditional_edges("verify_citations", self._after_check)
         graph.add_edge("ask_again", "generate_answer")
-        return graph.compile(name=AGENT_ID)
+        # Called from another agent's node (the assistant's tools), a graph would inherit that
+        # agent's checkpointer and store its sources in the caller's thread. Each run stands alone.
+        return graph.compile(name=AGENT_ID, checkpointer=False)
 
     # Entry point -------------------------------------------------------------------------
 

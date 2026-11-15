@@ -28,6 +28,8 @@ TOKEN_ROUTE = "POST /v1/auth/token"
 LEGAL_RESEARCH_ROUTE = "POST /v1/legal-research"
 AUDIT_EVENTS_ROUTE = "GET /v1/audit/events"
 FORGET_ROUTE = "DELETE /v1/data-subjects/{subject_id}/memories"
+CHAT_ROUTE = "POST /v1/chat"
+THREAD_ROUTE = "GET /v1/threads/{thread_id}"
 
 OPEN_ROUTES = frozenset({TOKEN_ROUTE})
 """Routes anyone may call without a token: only the one that hands tokens out."""
@@ -53,7 +55,9 @@ class Grants:
     tools: frozenset[str]
 
 
-_RESEARCH = Grants(routes=frozenset({LEGAL_RESEARCH_ROUTE}), tools=PUBLIC_TOOLS)
+_RESEARCH = Grants(
+    routes=frozenset({LEGAL_RESEARCH_ROUTE, CHAT_ROUTE, THREAD_ROUTE}), tools=PUBLIC_TOOLS
+)
 # "Ler auditoria": sócia, DPO and TI. The associado may read only their own events, which needs
 # a filter by actor the route does not have yet; until then the associado reads none.
 _RESEARCH_AND_AUDIT = Grants(routes=_RESEARCH.routes | {AUDIT_EVENTS_ROUTE}, tools=PUBLIC_TOOLS)

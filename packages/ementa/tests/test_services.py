@@ -4,6 +4,7 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
+from langgraph.checkpoint.memory import InMemorySaver
 
 from ementa import services
 from ementa.agents.legal_research import LegalResearchAgent
@@ -69,3 +70,44 @@ def test_rerank_off_is_the_f1_retrieval(build: Callable[..., LegalResearchAgent]
 
     assert services.knowledge_base().reranker is None
     assert agent.context_limit == CONTEXT_LIMIT == 5
+
+
+def test_the_checkpointer_is_built_once_from_the_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(_env_file=None, database_url="postgresql://x@db/ementa")  # type: ignore[call-arg]
+    built: list[str] = []
+
+    def fake(database_url: str) -> InMemorySaver:
+        built.append(database_url)
+        return InMemorySaver()
+
+    monkeypatch.setattr(services, "get_settings", lambda: settings)
+    monkeypatch.setattr(services, "postgres_checkpointer", fake)
+    services.checkpointer.cache_clear()
+    try:
+        assert services.checkpointer() is services.checkpointer()
+    finally:
+        services.checkpointer.cache_clear()
+    assert built == ["postgresql://x@db/ementa"]
+
+
+def test_the_assistant_is_built_once_without_loading_the_research_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saver = InMemorySaver()
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    monkeypatch.setattr(services, "checkpointer", lambda: saver)
+    monkeypatch.setattr(services, "model_registry", lambda: ModelRegistry(settings))
+
+    def research_agent() -> LegalResearchAgent:
+        raise AssertionError("built on the first turn, not with the assistant")
+
+    monkeypatch.setattr(services, "legal_research_agent", research_agent)
+    services.assistant_agent.cache_clear()
+    try:
+        agent = services.assistant_agent()
+        assert services.assistant_agent() is agent
+    finally:
+        services.assistant_agent.cache_clear()
+    assert agent.graph.checkpointer is saver

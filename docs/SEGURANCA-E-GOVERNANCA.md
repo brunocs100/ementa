@@ -207,8 +207,9 @@ sequenceDiagram
     G-->>U: Resposta com o CPF real
 ```
 
-- Na F2 o cofre vive em memória, por requisição; a partir da F3 passa para o Redis com TTL curto. O valor real não vai para log nem para span.
-- Só o usuário autorizado recebe a resposta reidratada. Para cliente MCP externo, o marcador fica.
+- Na pesquisa (`/v1/legal-research` e MCP) o cofre vive em memória, por requisição. No chat (F3) ele vive no estado da conversa, no checkpointer: um mapeamento por thread, que dura o mesmo que o histórico, porque o histórico só se reidrata com ele. Um Redis com TTL curto, como estava previsto, apagaria os valores antes da conversa e deixaria o histórico com marcadores. A troca: o valor real fica em repouso no Postgres (schema `langgraph`), protegido pelo acesso ao banco, e apagar os dados de um titular precisa apagar também as threads em que ele aparece (`delete_thread` do checkpointer). O valor real não vai para log nem para span.
+- Só o usuário autorizado recebe a resposta reidratada: no chat, só quem abriu a conversa a lê de volta; para qualquer outro, a conversa não existe (404). Para cliente MCP externo, o marcador fica.
+- No streaming do chat, cada token sai reidratado. O fim do texto fica retido enquanto pode virar marcador (`[CP` antes de `F_1]`), para nenhum marcador partido chegar à tela nem escapar da reidratação; o detalhe está na [Arquitetura](ARQUITETURA.md#chat-em-sse-f3).
 - O cofre é o mapeamento de marcador para valor que `pseudonymize` devolve. O chamador o passa de volta a cada turno, e o mesmo valor mantém o marcador na conversa toda, mesmo com outra pontuação (`123.456.789-09` e `12345678909` viram `[CPF_1]`) ou, num nome, sem acento.
 - Valor já mascarado na conversa é mascarado onde aparecer de novo, inclusive onde o NER não o reconhece.
 - A reidratação aceita o marcador como o modelo costuma ecoá-lo: `[ CPF_1 ]`, `[cpf_1]`, `\[CPF\_1\]` (Markdown), `[CPF 1]` e `CPF_1`.

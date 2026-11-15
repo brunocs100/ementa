@@ -72,7 +72,7 @@ def split_sentences(line: str) -> list[str]:
 
 
 def _check_sentence(
-    sentence: str, allowed: frozenset[str]
+    sentence: str, allowed: frozenset[str], check_prose: bool = True
 ) -> tuple[list[str], list[RemovedCitation]]:
     ids = extract_ids(sentence)
     valid = [i for i in ids if i in allowed]
@@ -81,6 +81,8 @@ def _check_sentence(
         for i in ids
         if i not in allowed
     ]
+    if not check_prose:
+        return valid, problems
     # A prose mention counts as cited when an id in the same sentence points to it. When that id
     # is outside the context, the problem is already reported above.
     prose = _ID.sub(" ", sentence)
@@ -98,15 +100,21 @@ def _check_sentence(
 _UNBACKED = "menção sem id de fonte verificado"
 
 
-def verify_citations(answer: str, allowed: Iterable[str]) -> VerificationResult:
-    """Keep the sentences whose citations are all in `allowed`; report the rest."""
+def verify_citations(
+    answer: str, allowed: Iterable[str], *, check_prose: bool = True
+) -> VerificationResult:
+    """Keep the sentences whose citations are all in `allowed`; report the rest.
+
+    With `check_prose=False` only the bracketed ids count: a text built from tool results, such
+    as a deadline's premises ("CPC, art. 219"), may name an article without citing it.
+    """
     allowed_ids = frozenset(allowed)
     result = VerificationResult(text="")
     kept_lines: list[str] = []
     for line in answer.split("\n"):
         kept: list[str] = []
         for sentence in split_sentences(line):
-            valid, problems = _check_sentence(sentence, allowed_ids)
+            valid, problems = _check_sentence(sentence, allowed_ids, check_prose)
             if problems:
                 result.removed.extend(problems)
             else:

@@ -587,6 +587,26 @@ O loader de runtime (`ementa_kit.skills`, F2):
 
 Convenções: JWT de curta duração com papel; erros no formato RFC 9457 (`application/problem+json`); `Idempotency-Key` nos POST que iniciam tarefa; paginação por cursor; limite de taxa por usuário no Redis; OpenAPI com exemplos.
 
+### Chat em SSE (F3)
+
+`POST /v1/chat` recebe `message` e, para continuar uma conversa, `thread_id`; sem ele, começa uma nova. A resposta é `text/event-stream` com o SSE nativo do FastAPI: cada evento leva um JSON tipado em `data`, com o tipo no campo `event` (`step`, `token`, `citation`, `done` e `error`), e o OpenAPI descreve a união com discriminador. Os campos de cada evento estão em [Agentes](AGENTES.md#assistente-assistant). O `done` traz o `thread_id`.
+
+| Situação | Resposta |
+|---|---|
+| Corpo inválido | 422, problema sem os valores enviados |
+| `thread_id` de outra pessoa ou que não existe | 404, igual nos dois casos: um id de conversa não revela nada |
+| Modelo sem chave | 503, antes de abrir o fluxo |
+| Erro com o fluxo aberto | Último evento `error`, com o mesmo problema RFC 9457 que o handler daria; o status 200 já tinha saído |
+
+O que pode falhar antes do primeiro evento é conferido numa dependência da rota, antes da resposta começar, para ainda caber um status HTTP. A rota passa a cada turno as ferramentas que o papel pode usar (`can_use_tool(papel, ferramenta)`, ligado à matriz de RBAC) e o agente só oferece essas ao modelo.
+
+Dois detalhes do streaming:
+
+- **Marcadores.** O modelo responde com `[CPF_1]` e o usuário precisa ver o CPF. Um marcador pode chegar partido entre pedaços (`[CP` e `F_1]`), então o `MarkerStream` do kit segura o fim do texto enquanto ele pode virar marcador (um `[` sem `]` até 40 caracteres atrás e a última palavra) e solta o resto já reidratado. Os tokens saem palavra por palavra, e juntos dão exatamente a resposta reidratada inteira (teste por propriedade). A alternativa de reidratar só no `done` mostraria marcadores ao usuário durante a resposta; a de mandar o marcador e o mapeamento ao cliente levaria o dado pessoal a mais um lugar.
+- **Trace.** O FastAPI puxa cada evento numa thread de trabalho, cada uma com a própria cópia do contexto. O span `invoke_agent assistant` é ativado só durante cada passo e nunca atravessa um `yield`; preso entre passos, ele seria desligado noutro contexto e deixaria órfãos os spans seguintes (teste pela rota HTTP).
+
+A conversa fica no checkpointer do LangGraph no Postgres, no schema `langgraph` (`ementa_kit.memory.postgres_checkpointer`, pacote `langgraph-checkpoint-postgres`), com todos os checkpoints da thread guardados. `GET /v1/threads/{id}` lê os turnos terminados de lá e os reidrata para quem abriu a conversa.
+
 ## Falhas e resiliência
 
 | Falha | Tratamento |

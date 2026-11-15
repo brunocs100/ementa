@@ -4,8 +4,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.store.postgres import PostgresStore
 
+from ementa.agents.assistant import AssistantAgent
 from ementa.agents.legal_research import LegalResearchAgent
 from ementa.agents.legal_research.graph import CONTEXT_LIMIT
 from ementa.knowledge import KnowledgeBase
@@ -15,13 +17,14 @@ from ementa.users import UserDirectory
 from ementa_kit.audit import PgAuditLog
 from ementa_kit.config import get_settings
 from ementa_kit.llm import ModelRegistry
-from ementa_kit.memory import MemoryWriter, open_postgres_store
+from ementa_kit.memory import MemoryWriter, open_postgres_store, postgres_checkpointer
 from ementa_kit.rag import FastEmbedder, FastReranker, PgHybridStore
 from ementa_kit.skills import SkillLibrary
 from ementa_kit.telemetry import instrument_openai
 
 if TYPE_CHECKING:
     from ementa.pii import PrivateResearcher
+    from ementa_kit.guardrails.pii import PiiGuard
 
 SKILLS_DIR = Path(__file__).resolve().parents[4] / "skills"
 
@@ -120,3 +123,25 @@ def memory_writer() -> MemoryWriter:
         similarity=settings.memory_dedupe_similarity,
         min_confidence=settings.memory_min_confidence,
     )
+
+
+@lru_cache
+def checkpointer() -> PostgresSaver:
+    """Short-term memory: the agents' threads, in the `langgraph` schema of the database.
+
+    The first call creates the schema and the tables and opens the connection pool.
+    """
+    return postgres_checkpointer(get_settings().database_url)
+
+
+@lru_cache
+def assistant_agent() -> AssistantAgent:
+    """The chat supervisor behind `/v1/chat`. The research agent and the PII guard load on the
+    first turn: reading a thread's history needs neither."""
+    return AssistantAgent(model_registry(), legal_research_agent, checkpointer(), _pii_guard)
+
+
+def _pii_guard() -> "PiiGuard":
+    from ementa.pii import pii_guard  # Presidio and spaCy take seconds to import
+
+    return pii_guard()
