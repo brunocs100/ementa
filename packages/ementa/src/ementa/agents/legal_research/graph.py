@@ -17,7 +17,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from ementa.domain.citations import RemovedCitation, VerificationResult, verify_citations
 from ementa.prompts import get_prompt
-from ementa_kit.context import Section, build_user_turn
+from ementa_kit.context import Section, build_context
 from ementa_kit.llm import ModelRegistry, ModelRole
 from ementa_kit.rag import Hit
 from ementa_kit.telemetry import get_logger, get_tracer
@@ -161,10 +161,10 @@ class LegalResearchAgent:
 
     def assemble_context(self, state: State) -> State:
         sources = "\n\n".join(render_source(h) for h in state["hits"]) or "(nenhuma fonte)"
-        messages = [
-            SystemMessage(self.answer_prompt.text),
-            build_user_turn([Section("fontes", sources)], state["question"]),
-        ]
+        # The size of each section goes to the invoke_agent span as an event.
+        messages = build_context(
+            self.answer_prompt.text, [Section("fontes", sources)], state["question"]
+        )
         return {"messages": messages, "attempts": 0}
 
     def generate_answer(self, state: State) -> State:

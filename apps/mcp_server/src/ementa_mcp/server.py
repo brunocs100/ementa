@@ -7,15 +7,17 @@ from datetime import date
 from typing import Annotated, Literal, Protocol
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from opentelemetry.trace import Span
 from pydantic import Field
 
 from ementa import services
 from ementa.agents.legal_research import ResearchAnswer
-from ementa.tools import deadlines, research, statutes
+from ementa.tools import deadlines, research, skills, statutes
 from ementa_kit.config import get_settings
 from ementa_kit.rag import Hit
+from ementa_kit.skills import MAX_NAME, NAME_PATTERN, SkillLibrary, UnknownSkillError
 from ementa_kit.telemetry import get_logger, get_tracer, setup
 
 INSTRUCTIONS = (
@@ -50,8 +52,9 @@ def _tool_span(name: str, data_class: str) -> AbstractContextManager[Span]:
 def build_server(
     knowledge: Callable[[], Searcher] = services.knowledge_base,
     agent: Callable[[], Answerer] = services.legal_research_agent,
+    skill_library: Callable[[], SkillLibrary] = services.skill_library,
 ) -> MCPServer:
-    """`knowledge` and `agent` are built on first call, so listing tools needs no database."""
+    """The dependencies are built on first call, so listing tools needs no database."""
     server = MCPServer(name="ementa", instructions=INSTRUCTIONS)
 
     @server.tool(
@@ -123,6 +126,45 @@ def build_server(
         request = statutes.GetStatuteArticleInput(source_id=source_id)
         with _tool_span("get_statute_article", statutes.DATA_CLASS.value):
             return statutes.get_statute_article(request)
+
+    @server.tool(
+        name="list_skills",
+        title="Listar skills",
+        description=skills.LIST_DESCRIPTION,
+        annotations=READ_ONLY,
+    )
+    def list_skills() -> skills.ListSkillsOutput:
+        with _tool_span("list_skills", skills.DATA_CLASS.value):
+            return skills.ListSkillsOutput.from_index(skill_library().index())
+
+    @server.tool(
+        name="load_skill",
+        title="Carregar as instruções de uma skill",
+        description=skills.LOAD_DESCRIPTION,
+        annotations=READ_ONLY,
+    )
+    def load_skill(
+        name: Annotated[
+            str,
+            Field(
+                max_length=MAX_NAME,
+                pattern=NAME_PATTERN,
+                description="Nome da skill, como legal-research",
+            ),
+        ],
+    ) -> skills.LoadSkillOutput:
+        request = skills.LoadSkillInput(name=name)
+        with _tool_span("load_skill", skills.DATA_CLASS.value) as span:
+            span.set_attribute("ementa.skill.name", request.name)
+            library = skill_library()
+            try:
+                skill = library.load_skill(request.name)
+            except UnknownSkillError:
+                known = ", ".join(s.name for s in library.index())
+                raise ToolError(
+                    f"Skill desconhecida: {request.name}. Disponíveis: {known}."
+                ) from None
+            return skills.LoadSkillOutput.from_skill(skill)
 
     return server
 

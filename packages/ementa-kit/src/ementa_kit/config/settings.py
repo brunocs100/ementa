@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     model_judge: str = "gpt-6.1-sol"
     llm_timeout_s: float = 60.0
 
+    # Skill scripts that may run, as "<skill>/<script>" (JSON list in the environment).
+    # Anything not listed is refused.
+    skill_scripts_allowed: list[str] = Field(default_factory=list)
+    skill_script_timeout_s: float = 10.0
+
     openai_api_key: SecretStr | None = Field(
         default=None,
         validation_alias=AliasChoices("EMENTA_OPENAI_API_KEY", "OPENAI_API_KEY"),

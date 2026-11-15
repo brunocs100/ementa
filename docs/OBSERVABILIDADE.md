@@ -37,7 +37,7 @@ Atributos próprios do projeto:
 | `ementa.prompt.version` | string | `1.2.0` |
 | `ementa.policy.route` | string | `cloud` ou `local` |
 | `ementa.guardrail.decision` | string | `allow`, `flag`, `mask`, `block` |
-| `ementa.context.section_tokens` | evento com mapa | `{"system": 900, "sources": 3100, "question": 120}` |
+| `ementa.context.section_tokens` | evento no span corrente (`invoke_agent`), com `<seção>.chars` e `<seção>.tokens` (aproximado, 4 caracteres por token) | `{"system.chars": 1245, "system.tokens": 312, "fontes.tokens": 3100, "pergunta.tokens": 14, ...}` |
 | `ementa.case.pseudo_id` | string | Hash do id do processo, nunca o número real |
 
 As chamadas à OpenAI usam a instrumentação oficial (`opentelemetry-instrumentation-openai-v2` 2.4b0, que cobre Chat Completions e embeddings; a Responses API não é coberta, por isso a F1 usa Chat Completions). FastAPI, httpx e psycopg entram com instrumentação automática.
@@ -137,7 +137,7 @@ models:
 2. Abra a cascata e veja qual span domina o tempo.
 3. No `retrieval`, confira os ids das fontes: a resposta certa estava entre elas?
 4. No `guardrail` de citações, veja o que foi removido e por quê.
-5. No `chat`, confira modelo, versão do prompt, tokens, cache e o evento `ementa.context.section_tokens`: alguma seção estourou o orçamento?
+5. No `chat`, confira modelo, versão do prompt, tokens e cache; no `invoke_agent`, o evento `ementa.context.section_tokens`: alguma seção estourou o orçamento?
 6. Pule para os logs pelo `trace_id` para ver exceções.
 7. Se for problema de qualidade, transforme o caso em pergunta do dataset (ver [Avaliação](AVALIACAO.md)).
 

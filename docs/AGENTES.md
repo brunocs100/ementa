@@ -188,6 +188,8 @@ O que o `ementa-mcp` expõe a clientes externos (Copilot, Claude, agente SK). Ca
 | `answer_legal_question` | Resposta com citações verificadas | Público | `legal_research` | F1 |
 | `get_statute_article` | Texto exato de um artigo | Público | RAG | F1 |
 | `calculate_deadline` | Prazo processual com premissas | Público | Ferramenta determinística | F1 |
+| `list_skills` | Nome e descrição das skills de runtime, sem as instruções | Público | `ementa_kit.skills` | F2 |
+| `load_skill` | Instruções completas de uma skill, pelo nome | Público | `ementa_kit.skills` | F2 |
 | `review_contract` | Análise de contrato, como tarefa longa | Restrito | `contract_review` | F4 |
 | `lookup_case` | Metadados e movimentações recentes de um processo pelo número CNJ | Restrito; sigiloso negado | `DataJudClient` e `case_monitor` | F5 |
 | `check_conflict` | Verifica conflito de interesses para um nome ou documento | Restrito | `check_conflict_graph` e `check_conflict_sql` do `intake` | F5 |
