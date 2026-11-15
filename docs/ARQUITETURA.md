@@ -369,7 +369,7 @@ LIMIT 5
 | Papel | Uso | Referência | Observação |
 |---|---|---|---|
 | `reasoning` | Redação, crítica, contratos | GPT-6.1 Terra, effort high | Sol é candidato, medido na régua |
-| `default` | Resposta da pesquisa, supervisor | GPT-6.1 Terra, effort medium | |
+| `default` | Resposta da pesquisa, supervisor | GPT-6 Luna, effort medium | Terra antes de 15/11/2026; trocado por custo (10 vezes mais barato) |
 | `fast` | Roteamento, extração, classificação | GPT-6 Luna | Candidato ao modelo local ajustado (F9) |
 | `judge` | Avaliações, em amostra | GPT-6.1 Sol | Modelo diferente do que responde |
 | `local` | Sigiloso, triagem ajustada | Modelo aberto de 3 a 4B no Ollama | CPU |

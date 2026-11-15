@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # Model per role (ADR 0005). Ids checked against the OpenAI /v1/models list on 2026-11-15.
     model_reasoning: str = "gpt-6.1-terra"
-    model_default: str = "gpt-6.1-terra"
+    model_default: str = "gpt-6-luna"  # cheaper; Terra stays for `reasoning`
     model_fast: str = "gpt-6-luna"
     model_judge: str = "gpt-6.1-sol"
     llm_timeout_s: float = 60.0

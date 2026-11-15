@@ -112,7 +112,7 @@ flowchart TD
 
 ### Modelo, memória e HITL
 
-- Papel `fast` (GPT-6 Luna) em `rewrite_queries`; papel `default` (GPT-6.1 Terra, effort medium) em `generate_answer`.
+- Papel `fast` (GPT-6 Luna) em `rewrite_queries`; papel `default` (GPT-6 Luna, effort medium, por custo) em `generate_answer`.
 - Sem memória na F1. A partir da F3, lê preferências do advogado (formato de citação) no namespace dele.
 - Sem HITL: a resposta é informativa e sempre marcada como rascunho.
 
