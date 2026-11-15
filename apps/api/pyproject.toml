@@ -9,6 +9,9 @@ dependencies = [
     "ementa-kit",
     "fastapi>=0.163",
     "opentelemetry-instrumentation-fastapi>=0.66b2",
+    "pyjwt>=2.15",
+    # the OAuth2 password form of POST /v1/auth/token
+    "python-multipart>=0.0.33",
     "uvicorn>=0.54",
 ]
 

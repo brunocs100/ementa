@@ -7,7 +7,9 @@ from fastapi.testclient import TestClient
 
 from ementa.agents.legal_research import Citation, ResearchAnswer
 from ementa.domain.citations import RemovedCitation
+from ementa.users import FirmUser
 from ementa_api.app import create_app
+from ementa_api.auth import Role, User, create_access_token
 from ementa_kit.llm import ModelUnavailableError
 
 OPENAPI = Path(__file__).parents[1] / "openapi.json"
@@ -38,6 +40,16 @@ class FakeResearcher:
         )
 
 
+class NoUsers:
+    def authenticate(self, username: str, password: str) -> FirmUser | None:
+        return None
+
+
+def auth(role: Role = Role.ASSOCIADO) -> dict[str, str]:
+    token = create_access_token(User(id="u-1", name="Pessoa de Teste", role=role))
+    return {"Authorization": f"Bearer {token}"}
+
+
 def client(researcher: FakeResearcher | None = None, chunks: int | Exception = 118) -> TestClient:
     def count() -> int:
         if isinstance(chunks, Exception):
@@ -45,8 +57,8 @@ def client(researcher: FakeResearcher | None = None, chunks: int | Exception = 1
         return chunks
 
     fake = researcher or FakeResearcher()
-    app = create_app(researcher=lambda: fake, chunks=count)
-    return TestClient(app, raise_server_exceptions=False)
+    app = create_app(researcher=lambda: fake, chunks=count, users=NoUsers)
+    return TestClient(app, raise_server_exceptions=False, headers=auth())
 
 
 def test_legal_research_returns_the_verified_answer() -> None:
@@ -143,10 +155,12 @@ def test_cpf_reaches_the_model_as_a_marker_and_comes_back_rehydrated() -> None:
     from ementa.pii import PrivateResearcher
 
     model = EchoResearcher()
-    app = create_app(researcher=lambda: PrivateResearcher(model), chunks=lambda: 1)
+    app = create_app(researcher=lambda: PrivateResearcher(model), chunks=lambda: 1, users=NoUsers)
     question = "Meu CPF é 123.456.789-09 e fui negativado sem aviso. Posso pedir indenização?"
 
-    response = TestClient(app).post("/v1/legal-research", json={"question": question})
+    response = TestClient(app, headers=auth()).post(
+        "/v1/legal-research", json={"question": question}
+    )
 
     assert response.status_code == 200
     assert "[CPF_1]" in model.questions[0]

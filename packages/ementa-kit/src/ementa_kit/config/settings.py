@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     skill_scripts_allowed: list[str] = Field(default_factory=list)
     skill_script_timeout_s: float = 10.0
 
+    # Signs the REST API tokens (HS256). Outside dev and ci the API does not start without it;
+    # in dev and ci each process draws a random one, so tokens die with the process.
+    jwt_secret: SecretStr | None = Field(default=None, min_length=32)
+    jwt_ttl_minutes: int = Field(default=15, ge=1, le=60)
+
     openai_api_key: SecretStr | None = Field(
         default=None,
         validation_alias=AliasChoices("EMENTA_OPENAI_API_KEY", "OPENAI_API_KEY"),

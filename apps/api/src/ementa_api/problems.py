@@ -4,6 +4,7 @@ Validation errors list where the request is wrong, never the values sent: a ques
 personal data, and error bodies end up in logs.
 """
 
+from collections.abc import Mapping
 from http import HTTPStatus
 from typing import Any
 
@@ -33,11 +34,12 @@ class Problem(BaseModel):
     errors: list[FieldError] | None = None
 
 
-def problem_response(problem: Problem) -> JSONResponse:
+def problem_response(problem: Problem, headers: Mapping[str, str] | None = None) -> JSONResponse:
     return JSONResponse(
         problem.model_dump(exclude_none=True),
         status_code=problem.status,
         media_type=PROBLEM_JSON,
+        headers=headers,
     )
 
 
@@ -90,7 +92,8 @@ async def _http(request: Request, exc: Exception) -> JSONResponse:
             status=exc.status_code,
             detail=detail,
             instance=request.url.path,
-        )
+        ),
+        headers=exc.headers,  # WWW-Authenticate on 401, Allow on 405
     )
 
 
