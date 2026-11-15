@@ -13,11 +13,19 @@ dependencies = [
     # openai-v2 2.4b0 imports a module that util-genai 1.x renamed
     "opentelemetry-util-genai>=0.4b0,<1",
     "opentelemetry-sdk>=1.38",
+    "presidio-analyzer>=2.2.366",
+    # Portuguese NER for the PII guardrail; a direct wheel from the spaCy release, pinned in uv.lock
+    "pt-core-news-md",
     "psycopg[binary]>=3.3",
     "pydantic-settings>=2.11",
     "pyyaml>=6.0",
+    # pt_core_news_md 3.8.0 only loads on spaCy 3.8
+    "spacy>=3.8.18,<3.9",
     "structlog>=25.4",
 ]
+
+[tool.uv.sources]
+pt-core-news-md = { url = "https://github.com/explosion/spacy-models/releases/download/pt_core_news_md-3.8.0/pt_core_news_md-3.8.0-py3-none-any.whl" }
 
 [build-system]
 requires = ["uv_build>=0.13,<0.14"]

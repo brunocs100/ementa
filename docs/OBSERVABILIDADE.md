@@ -37,6 +37,9 @@ Atributos próprios do projeto:
 | `ementa.prompt.version` | string | `1.2.0` |
 | `ementa.policy.route` | string | `cloud` ou `local` |
 | `ementa.guardrail.decision` | string | `allow`, `flag`, `mask`, `block` |
+| `ementa.guardrail.stage` | string | `input` ou `output` |
+| `ementa.pii.count.<tipo>` | int | `ementa.pii.count.cpf = 2`, um atributo por tipo achado |
+| `ementa.pii.total` | int | `4`, valores trocados por marcador na chamada |
 | `ementa.context.section_tokens` | evento no span corrente (`invoke_agent`), com `<seção>.chars` e `<seção>.tokens` (aproximado, 4 caracteres por token) | `{"system.chars": 1245, "system.tokens": 312, "fontes.tokens": 3100, "pergunta.tokens": 14, ...}` |
 | `ementa.case.pseudo_id` | string | Hash do id do processo, nunca o número real |
 
