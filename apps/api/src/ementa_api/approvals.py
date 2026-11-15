@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ementa.agents.brief_drafting import export_docx
 from ementa.documents import Document
 from ementa.domain.access import decides_every_run, may_decide
 from ementa_api.auth import User, authorized_user
@@ -107,6 +108,9 @@ IdempotencyKey = Annotated[
 ]
 
 
+DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
 class BriefRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -119,6 +123,14 @@ class BriefRequest(BaseModel):
         description="Tipo da peça: `peticao_inicial`, `contestacao`, `recurso`",
     )
     case_id: UUID | None = Field(default=None, description="Processo da peça, se houver")
+    template: str = Field(
+        default="initial-petition-credit-listing",
+        pattern=r"^[a-z0-9][a-z0-9-]{0,63}$",
+        description=(
+            "Modelo do escritório: `initial-petition-credit-listing` (negativação indevida) ou "
+            "`initial-petition-product-defect` (vício do produto)"
+        ),
+    )
 
 
 class RunAccepted(BaseModel):
@@ -334,7 +346,7 @@ def drafting_router(
         user: Annotated[User, Depends(authorized_user)],
         idempotency_key: IdempotencyKey = None,
     ) -> RunAccepted | JSONResponse:
-        request = body.model_dump(mode="json")
+        request = body.model_dump(mode="json") | {"requested_by": user.id}
         return await _start(
             drafting(), BRIEF_DRAFTING, request, user, idempotency_key, response, "/v1/briefs"
         )
@@ -404,6 +416,37 @@ def drafting_router(
         desk = drafting()
         approval = _visible(desk.approval(str(approval_id)), user)
         return approval_out(approval, desk.run(approval.thread_id))
+
+    @router.get(
+        "/v1/approvals/{approval_id}/docx",
+        response_class=Response,
+        responses={
+            200: {"content": {DOCX: {}}, "description": "O documento em DOCX"},
+            **problem_responses(401, 403, 404, 422),
+        },
+        summary="Baixa em DOCX: o rascunho com o aviso, ou o texto aprovado com quem aprovou",
+        tags=["approvals"],
+    )
+    def approval_docx(
+        approval_id: UUID, user: Annotated[User, Depends(authorized_user)]
+    ) -> Response:
+        approval = _visible(drafting().approval(str(approval_id)), user)
+        final = approval.final_text
+        if final is not None and approval.decision is not None:
+            data = export_docx(
+                approval.request.title,
+                final,
+                approved_by=approval.decision.decided_by,
+                approved_at=approval.decided_at,
+            )
+        else:
+            data = export_docx(approval.request.title, approval.request.draft)
+        name = f"ementa-{approval.id}.docx"
+        return Response(
+            content=data,
+            media_type=DOCX,
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        )
 
     @router.post(
         "/v1/approvals/{approval_id}",

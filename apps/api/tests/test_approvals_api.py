@@ -500,7 +500,13 @@ def test_the_brief_request_is_kept_as_the_route_accepted_it() -> None:
 
     run = f.store.run(started.json()["run_id"])
     assert run is not None
-    assert run.input == {"facts": FACTS, "kind": "contestacao", "case_id": case_id}
+    assert run.input == {
+        "facts": FACTS,
+        "kind": "contestacao",
+        "case_id": case_id,
+        "template": "initial-petition-credit-listing",
+        "requested_by": ASSOCIADO.id,
+    }
     assert json.loads(json.dumps(run.input)) == run.input
     assert unknown.status_code == 422
 
@@ -518,3 +524,30 @@ def test_the_inbox_pages_oldest_first_with_a_cursor() -> None:
     assert len(rest["items"]) == 1 and rest["next_cursor"] is None
     assert http.get("/v1/approvals?status=aprovado").status_code == 422
     assert http.get("/v1/approvals?cursor=12345678909").status_code == 422
+
+
+def test_the_docx_carries_the_draft_notice_until_approved_and_then_who_approved() -> None:
+    from io import BytesIO
+
+    from docx import Document as Docx
+
+    def text_of(data: bytes) -> str:
+        doc = Docx(BytesIO(data))
+        parts = [p.text for p in doc.paragraphs]
+        for section in doc.sections:
+            parts += [p.text for p in section.header.paragraphs + section.footer.paragraphs]
+        return "\n".join(parts)
+
+    f = firm()
+    http = f.client(ASSOCIADO)
+    http.post("/v1/briefs", json={"facts": FACTS})
+    approval_id = pending_id(http)
+
+    draft = http.get(f"/v1/approvals/{approval_id}/docx")
+    http.post(f"/v1/approvals/{approval_id}", json={"action": "approve"})
+    final = http.get(f"/v1/approvals/{approval_id}/docx")
+
+    assert draft.status_code == final.status_code == 200
+    assert draft.headers["content-type"].startswith("application/vnd.openxmlformats")
+    assert "Rascunho" in text_of(draft.content)
+    assert ASSOCIADO.id in text_of(final.content)

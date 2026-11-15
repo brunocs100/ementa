@@ -37,6 +37,7 @@ CONTRACT_REVIEW_ROUTE = "POST /v1/contracts/{document_id}/review"
 APPROVALS_ROUTE = "GET /v1/approvals"
 APPROVAL_ROUTE = "GET /v1/approvals/{approval_id}"
 DECIDE_ROUTE = "POST /v1/approvals/{approval_id}"
+APPROVAL_DOCX_ROUTE = "GET /v1/approvals/{approval_id}/docx"
 
 OPEN_ROUTES = frozenset({TOKEN_ROUTE})
 """Routes anyone may call without a token: only the one that hands tokens out."""
@@ -77,7 +78,14 @@ _UPLOAD = frozenset({DOCUMENTS_ROUTE, JOB_ROUTE})
 # "Aprovar peça ou relatório": the sócia, and the associado on the runs they asked for
 # (`may_decide`). Only who may approve starts a draft, so every run has someone to decide it.
 _DRAFTING = frozenset(
-    {BRIEFS_ROUTE, CONTRACT_REVIEW_ROUTE, APPROVALS_ROUTE, APPROVAL_ROUTE, DECIDE_ROUTE}
+    {
+        BRIEFS_ROUTE,
+        CONTRACT_REVIEW_ROUTE,
+        APPROVALS_ROUTE,
+        APPROVAL_ROUTE,
+        APPROVAL_DOCX_ROUTE,
+        DECIDE_ROUTE,
+    }
 )
 
 PERMISSIONS: Mapping[Role, Grants] = MappingProxyType(

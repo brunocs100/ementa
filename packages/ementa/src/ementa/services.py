@@ -236,7 +236,10 @@ def drafting_agents() -> dict[str, DraftingAgent]:
     """The drafting agents, by id, each compiled with `checkpointer()`: `brief_drafting` behind
     POST /v1/briefs and `contract_review` behind POST /v1/contracts/{id}/review. An agent adds
     its line here when it lands; until then its route answers 503."""
-    return {}
+    from ementa.agents.brief_drafting.runner import BriefDraftingRun
+
+    brief = BriefDraftingRun(brief_drafting_agent())
+    return {brief.id: brief}
 
 
 @lru_cache
