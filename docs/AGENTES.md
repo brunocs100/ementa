@@ -9,7 +9,7 @@ Catálogo dos agentes e das ferramentas da Ementa: o que cada um faz, como o gra
 | Agente | id | Padrão | Fase | Status |
 |---|---|---|---|---|
 | Pesquisa jurídica | `legal_research` | RAG agêntico com reflexão | F1, F2, F5 | Documentado |
-| Assistente | `assistant` | Supervisor que roteia | F3 | Documentado |
+| Assistente | `assistant` | Supervisor que roteia | F3 | Implementado |
 | Análise de contratos | `contract_review` | Map-reduce por cláusula | F4 | Documentado |
 | Redação de peças | `brief_drafting` | Plan-and-execute com crítico e HITL | F4 | Documentado |
 | Prazos e processos | `case_monitor` | Workflow agendado | F5 | Documentado |
@@ -201,40 +201,68 @@ O `assistant` não é exposto por MCP; o cliente externo chama as ferramentas di
 
 **Objetivo.** Porta de entrada única de chat: entende o pedido e delega ao agente certo.
 
-**Gatilho e canal.** Chat no console e rota `/v1/chat` com SSE (F3).
+**Gatilho e canal.** Rota `POST /v1/chat` com SSE (F3) e, na F4, o chat do console. O histórico de uma conversa sai em `GET /v1/threads/{id}`, só para quem a abriu.
 
-**Padrão e por quê.** Supervisor que roteia. Cada subagente roda na própria conversa com o modelo, o que isola contexto e mantém o histórico só de acréscimo em cada uma.
+**Padrão e por quê.** Supervisor que roteia por chamada de ferramenta. A cada turno, o modelo `fast` recebe as ferramentas que o papel de quem pergunta pode usar e decide se chama o `legal_research`, o `calculate_deadline` ou responde direto (fora do escopo, pedido de dado que falta). O mesmo modelo escreve a resposta com o que a ferramenta devolveu. Cada subagente roda na própria conversa com o modelo: o `legal_research` monta o próprio contexto com as fontes e não grava nada na conversa do chat, o que isola contexto e mantém o histórico só de acréscimo em cada uma.
+
+Na F3, o roteamento por function calling substituiu o nó de classificação com rota e confiança do desenho: é uma chamada a menos por turno e não precisa de um nó para compor a resposta. A troca é perder o número de confiança do roteamento; a acurácia fica para o conjunto rotulado. Os agentes das fases seguintes (`contract_review`, `brief_drafting`, `case_monitor`, `firm_analytics`) entram como ferramentas novas do mesmo supervisor.
 
 ```mermaid
 flowchart TD
-    A["receive_message"] --> B["route"]
-    B -->|"pesquisa"| C["legal_research"]
-    B -->|"contrato"| D["contract_review"]
-    B -->|"peça"| E["brief_drafting"]
-    B -->|"prazo"| F["calculate_deadline"]
-    B -->|"processo, a partir da F5"| J["case_monitor"]
-    B -->|"números do escritório"| G["firm_analytics"]
-    B -->|"fora do escopo"| H["answer_directly"]
-    C --> I["compose_reply"]
-    D --> I
-    E --> I
-    F --> I
-    J --> I
-    G --> I
-    H --> I
+    A["mensagem do usuário"] -->|"PII vira marcador"| B["supervisor, modelo fast"]
+    B -->|"chamou ferramenta"| C["tools: legal_research ou calculate_deadline"]
+    C -->|"resultado como mensagem nova"| B
+    B -->|"respondeu"| D["finalize: confere as citações"]
+    D --> E["evento done, com os valores reais"]
 ```
 
-**Estado:** `messages`, `user_id`, `user_role`, `route`, `route_confidence`, `delegated_result`, `cost_usd`.
+**Estado** (no checkpointer, uma thread por conversa):
+
+| Campo | Conteúdo |
+|---|---|
+| `messages` | O que o modelo viu, pseudonimizado e só de acréscimo; o prompt de sistema é a primeira mensagem e congela quando a conversa começa |
+| `pii_mapping` | Marcador e valor de cada dado pessoal da conversa; só cresce, e o mesmo valor mantém o marcador em todos os turnos |
+| `owner_id`, `prompt` | Quem abriu a conversa e o id e a versão do prompt congelado |
+| `allowed_tools`, `rounds` | Ferramentas do turno, pelo papel de quem pergunta, e chamadas ao modelo no turno |
+| `sources` | Fontes verificadas pelo `legal_research` na conversa |
+| `turns` | Cada turno terminado como o usuário vê, ainda com marcadores: reidratado na leitura |
 
 | Ferramenta | Tipo | Guardrails |
 |---|---|---|
-| Subgrafos dos agentes | Conforme o agente | Lista permitida por papel (estagiário não chega ao BI) |
+| `legal_research` | Subagente, leitura | Lista permitida por papel; a pergunta chega já pseudonimizada; citações verificadas dentro dele e de novo na resposta final |
+| `calculate_deadline` | Leitura, determinística | Schema estrito; o vencimento vem do código, e o modelo nunca conta dias |
 
-- **Modelo:** `fast` no roteamento, com saída estruturada (rota e confiança); `default` na resposta final. Na F9, o roteamento pode passar para o modelo local ajustado.
-- **Memória:** curta (checkpointer por thread) e longa (preferências do advogado).
+- **Modelo:** `fast` no roteamento e na resposta (GPT-6 Luna, effort low). Na F9, pode passar para o modelo local ajustado.
+- **Prompt:** `assistant.supervisor` v1 em `prompts/assistant/`. Uma conversa aberta continua com o prompt da versão em que começou.
+- **Visão do modelo:** derivada do estado, sem editar nada: cada pedido começa com o pedido anterior inteiro (teste com `assert_append_only`, inclusive depois de reiniciar o processo). Resultado de ferramenta é truncado em 6.000 caracteres antes de entrar; o completo fica no `artifact` da mensagem, que não vai ao modelo.
+- **Limites:** até 3 chamadas com ferramentas por turno; a quarta vai com `tool_choice: none` e precisa responder, com as mesmas ferramentas na lista para o prefixo não mudar. Ferramenta que falha vira resultado de erro e o turno segue. Chamada de ferramenta deixada aberta por queda do processo ganha um resultado de interrupção no começo do turno seguinte, acrescentado e não editado, porque o provedor recusa histórico com chamada sem resposta.
+- **Citações:** o `finalize` tira da resposta a frase que cita id fora das fontes verificadas na conversa e lista o que tirou em `removed`. Só os ids entre colchetes contam: as premissas do prazo citam "CPC, art. 219" em prosa.
+- **Dados pessoais:** a mensagem passa pelo `pii_guard()` antes de entrar no grafo, com o mapeamento da conversa; o modelo e o `legal_research` só veem marcadores. Os tokens saem com os valores reais, palavra por palavra: o fim do texto fica retido enquanto pode virar marcador (`[CP` antes de `F_1]`), de modo que os tokens juntos dão exatamente a resposta reidratada (teste por propriedade com Hypothesis).
+- **Memória:** curta no checkpointer do LangGraph no Postgres, schema `langgraph`; a conversa sobrevive a reinício do processo (teste de integração). A longa (preferências do advogado) é outra frente da F3.
 - **HITL:** herda dos subagentes.
-- **Métricas:** acurácia do roteamento num conjunto rotulado; taxa de "fora do escopo"; custo por conversa.
-- **Custo estimado:** um roteamento custa uma fração de centavo; o resto é o do subagente. **Fase:** F3. **Status:** Documentado.
+- **Telemetria:** `invoke_agent assistant` com `gen_ai.conversation.id`; dentro dele, `execute_tool legal_research` (com o `invoke_agent legal_research` embaixo) ou `execute_tool calculate_deadline`, `guardrail pii` e `guardrail citation_verifier`.
+- **Métricas:** acurácia do roteamento num conjunto rotulado (a fazer); taxa de "fora do escopo"; custo por conversa.
+- **Custo estimado:** um roteamento custa uma fração de centavo; o resto é o do subagente. **Fase:** F3. **Status:** Implementado (supervisor, memória curta e SSE).
+
+Eventos do `POST /v1/chat`, um JSON por evento no `data` do SSE, com o tipo no campo `event`:
+
+| `event` | Campos | Quando |
+|---|---|---|
+| `step` | `name` (`supervisor`, `legal_research`, `calculate_deadline`), `status` (`started`, `finished`, `denied`, `failed`) | Começo e fim de cada chamada ao modelo e de cada ferramenta |
+| `token` | `text` | Pedaço da resposta, palavra inteira, com os valores reais |
+| `citation` | `source_id`, `title`, `url` | Fonte verificada pelo `legal_research`, assim que a ferramenta volta |
+| `done` | `thread_id`, `message`, `removed`, `notice` | Último evento; `message` é a resposta conferida e prevalece sobre os tokens juntos |
+| `error` | Campos de problema RFC 9457 (`type`, `title`, `status`, `detail`, `instance`) | Erro depois de aberto o fluxo; antes dele, a resposta é o problema com o status HTTP (404, 422, 503) |
+
+```text
+data: {"event":"step","name":"legal_research","status":"started"}
+
+data: {"event":"citation","source_id":"cdc:art49","title":"Código de Defesa do Consumidor, art. 49","url":"https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm"}
+
+data: {"event":"token","text":"Pode desistir "}
+
+data: {"event":"done","thread_id":"7c2af06a-ef81-470c-b55a-5e2cad731fe9","message":"Pode desistir em 7 dias [cdc:art49].","removed":[],"notice":"Rascunho para conferência do advogado responsável. Não é aconselhamento jurídico."}
+```
 
 ## Análise de contratos (`contract_review`)
 

@@ -40,6 +40,8 @@ Atributos próprios do projeto:
 | `ementa.guardrail.stage` | string | `input` ou `output` |
 | `ementa.pii.count.<tipo>` | int | `ementa.pii.count.cpf = 2`, um atributo por tipo achado |
 | `ementa.pii.total` | int | `4`, valores trocados por marcador na chamada |
+| `ementa.tool.status` | string | No `execute_tool` do `assistant`: `finished`, `denied` (fora das ferramentas do papel) ou `failed` |
+| `ementa.assistant.tools` | string[] | No `invoke_agent assistant`: ferramentas oferecidas ao modelo no turno |
 | `ementa.context.section_tokens` | evento no span corrente (`invoke_agent`), com `<seção>.chars` e `<seção>.tokens` (aproximado, 4 caracteres por token) | `{"system.chars": 1245, "system.tokens": 312, "fontes.tokens": 3100, "pergunta.tokens": 14, ...}` |
 | `ementa.case.pseudo_id` | string | Hash do id do processo, nunca o número real |
 
