@@ -18,6 +18,12 @@ def _add_trace_ids(_: Any, __: str, event: MutableMapping[str, Any]) -> MutableM
     return event
 
 
+def _stderr_logger(*_: Any) -> structlog.PrintLogger:
+    """Look up `sys.stderr` on each use: a stream bound at configure time goes stale when it is
+    replaced, as pytest does for every test."""
+    return structlog.PrintLogger(file=sys.stderr)
+
+
 def configure_logging(settings: Settings) -> None:
     """Structured logs on stderr. Stdout stays free for the MCP stdio transport."""
     level = logging.getLevelNamesMapping().get(settings.log_level.upper(), logging.INFO)
@@ -36,7 +42,7 @@ def configure_logging(settings: Settings) -> None:
             renderer,
         ],
         wrapper_class=structlog.make_filtering_bound_logger(level),
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        logger_factory=_stderr_logger,
         cache_logger_on_first_use=False,
     )
 
