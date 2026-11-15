@@ -4,6 +4,9 @@ The prompt asks for every legal reference to carry its source id in brackets, as
 "[cdc:art49]". A sentence is removed when it cites an id outside the context, or when it mentions
 an article or a súmula in prose without the matching id next to it: "art. 1.003" needs an id of
 `art1003`, "Súmula 385" one ending in `:sumula:385`, "Súmula Vinculante 13" one ending in `:sv:13`.
+
+Once verified, a brief writes its ids as references a court reads: `label_citations` turns
+"[cdc:art42:pu]" into "(art. 42, parágrafo único, do CDC)".
 """
 
 import re
@@ -123,3 +126,62 @@ def verify_citations(
         kept_lines.append(" ".join(kept))
     result.text = re.sub(r"\n{3,}", "\n\n", "\n".join(kept_lines)).strip()
     return result
+
+
+_LAW_OF = {"cdc": "do CDC", "cpc": "do CPC", "lgpd": "da LGPD"}
+_COURTS = {"stj": "STJ", "stf": "STF"}
+_ARTICLE_ID = re.compile(
+    r"(?P<law>[a-z]+):art(?P<number>\d+)(?P<suffix>-[A-Z])?(?P<parts>(?::[A-Za-z0-9-]+)*)"
+)
+_SUMULA_ID = re.compile(r"(?P<court>[a-z]+):(?P<kind>sumula|sv):(?P<number>\d+)")
+_PARAGRAPH = re.compile(r"p(\d+)(-[A-Z])?")
+_ITEM = re.compile(r"[IVXLCDM]+(?:-[A-Z])?|[a-z]")  # inciso (XI-A) or alínea, as the law writes
+_ONE_ID = r"\[[a-z]+(?::[A-Za-z0-9-]+)+\]"
+_ID_RUN = re.compile(rf"{_ONE_ID}(?:\s*[,;]?\s*{_ONE_ID})*")
+
+
+def _ordinal(number: str) -> str:
+    """As the law writes numbers: 1 to 9 take the ordinal sign (art. 6º, § 1º), 10 on do not
+    (art. 10), and thousands take a dot (art. 1.035)."""
+    value = int(number)
+    return f"{value}º" if value < 10 else f"{value:,}".replace(",", ".")
+
+
+def citation_label(source_id: str) -> str:
+    """The reference a brief writes for a source id.
+
+    `cdc:art49` is "art. 49 do CDC", `cdc:art42:pu` "art. 42, parágrafo único, do CDC",
+    `cdc:art12:p1:I` "art. 12, § 1º, I, do CDC", `stj:sumula:385` "Súmula 385 do STJ" and
+    `stf:sv:13` "Súmula Vinculante 13 do STF". An id of any other shape comes back as it is.
+    """
+    if sumula := _SUMULA_ID.fullmatch(source_id):
+        court = _COURTS.get(sumula["court"])
+        kind = "Súmula Vinculante" if sumula["kind"] == "sv" else "Súmula"
+        return f"{kind} {int(sumula['number'])} do {court}" if court else source_id
+    article = _ARTICLE_ID.fullmatch(source_id)
+    if article is None or article["law"] not in _LAW_OF:
+        return source_id
+    parts = [f"art. {_ordinal(article['number'])}{article['suffix'] or ''}"]
+    for part in article["parts"].split(":")[1:]:
+        if part == "pu":
+            parts.append("parágrafo único")
+        elif paragraph := _PARAGRAPH.fullmatch(part):
+            parts.append(f"§ {_ordinal(paragraph[1])}{paragraph[2] or ''}")
+        elif _ITEM.fullmatch(part):
+            parts.append(part)
+        else:
+            return source_id
+    law = _LAW_OF[article["law"]]
+    return f"{', '.join(parts)}, {law}" if len(parts) > 1 else f"{parts[0]} {law}"
+
+
+def label_citations(text: str) -> str:
+    """Write each bracketed id as the reference a brief uses, in parentheses. Ids cited side by
+    side share one: "[cdc:art6:VIII] [cdc:art14]" becomes
+    "(art. 6º, VIII, do CDC; art. 14 do CDC)"."""
+
+    def label(match: re.Match[str]) -> str:
+        ids = dict.fromkeys(_ID.findall(match.group(0)))
+        return f"({'; '.join(citation_label(i) for i in ids)})"
+
+    return _ID_RUN.sub(label, text)
