@@ -5,7 +5,7 @@ Plataforma de agentes de IA para escritórios de advocacia. Faz pesquisa jurídi
 [![CI](https://github.com/brunocs100/ementa/actions/workflows/ci.yml/badge.svg)](https://github.com/brunocs100/ementa/actions/workflows/ci.yml) ![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB) ![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-green) ![Status](https://img.shields.io/badge/status-em%20constru%C3%A7%C3%A3o-orange)
 
 > [!IMPORTANT]
-> Projeto em construção. O código entra por fases: a F0 (fundação) e a F1 (pesquisa no CDC com citação verificada e cálculo de prazo, pelo MCP) estão no `main`, com CI verde; a demo do Marco 1 está prevista para 19/11/2026. Os dados de clientes são fictícios e nada aqui é aconselhamento jurídico.
+> Projeto em construção. O código entra por fases: a F0 (fundação) e a F1 (pesquisa no CDC com citação verificada e cálculo de prazo, pelo MCP) estão prontas no `main`, com CI verde, e fecham o Marco 1; a próxima fase é a F2. Os dados de clientes são fictícios e nada aqui é aconselhamento jurídico.
 
 ## O que é
 
@@ -106,7 +106,7 @@ Detalhes em [docs/ARQUITETURA.md](docs/ARQUITETURA.md) e nos [ADRs](docs/adr/REA
 | Marco | Fases | O que dá para mostrar | Meta | Status |
 |---|---|---|---|---|
 | 0 | — | Plano, arquitetura e decisões | 14/11/2026 | Pronto |
-| 1 | F0, F1 | Pesquisa no CDC com citação verificada e cálculo de prazo, pelo MCP no VS Code, com traces | 19/11/2026 | Em andamento |
+| 1 | F0, F1 | Pesquisa no CDC com citação verificada e cálculo de prazo, pelo MCP no VS Code, com traces | 19/11/2026 | Pronto |
 | 2 | F2, F3 | PII pseudonimizada, skills, API, memória e supervisor | 04/12/2026 | Planejado |
 | 3 | F4 a F6 | Contratos e peças com aprovação humana, DataJud, grafo e governança completa | 15/01/2027 | Planejado |
 | 4 | F7 a F10 | Operação, Semantic Kernel, Copilot, fine-tuning, MLOps e kit publicado | 19/02/2027 | Planejado |
