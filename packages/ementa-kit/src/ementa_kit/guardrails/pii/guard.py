@@ -25,8 +25,8 @@ from ementa_kit.guardrails.pii.recognizers import (
 )
 from ementa_kit.telemetry import get_tracer
 
-# 42 MB wheel. NER F1 on WikiNER: sm 88.1, md 89.6, lg 90.3 (568 MB). On legal sentences the sm
-# model missed uncommon first names that md finds; lg found one name more at 13 times the size.
+# 42 MB wheel. NER F1 on WikiNER: sm 88.1, md 89.6, lg 90.3 (568 MB). Of 33 names in legal
+# sentences, sm found 28 (it misses uncommon first names), md 31 and lg 33 at 13 times the size.
 DEFAULT_MODEL = "pt_core_news_md"
 
 # NER has its own tok2vec in the pt_core_news pipelines, so nothing else needs to load.
