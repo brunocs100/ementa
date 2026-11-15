@@ -15,9 +15,25 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg17
+        env:
+          POSTGRES_USER: ementa
+          POSTGRES_PASSWORD: ementa
+          POSTGRES_DB: ementa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ementa -d ementa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       EMENTA_ENV: ci
       EMENTA_OTEL_ENABLED: "false"
+      # Integration tests (hybrid search SQL) run against this service; locally they skip.
+      EMENTA_TEST_DATABASE_URL: postgresql://ementa:ementa@localhost:5432/ementa
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
