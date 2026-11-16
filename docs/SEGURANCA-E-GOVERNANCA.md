@@ -261,6 +261,7 @@ Modelo de NER: em 51 frases jurídicas fictícias com 33 nomes, já com o format
 - O verificador extrai toda citação da resposta (id e menção textual, como "art. 49 do CDC") e confere contra as fontes que foram para o contexto daquela chamada. Citação fora delas é removida, mesmo que exista no corpus.
 - Citação não encontrada: na pesquisa, é removida e a resposta ganha um aviso; na peça, a finalização é bloqueada até revisão.
 - Na peça (`brief_drafting`, F4), as fontes permitidas são as que o `legal_research` verificou para as teses. Citação que falha manda o rascunho de volta ao modelo uma vez, com o motivo; se falhar de novo, a frase sai e o resumo da aprovação a lista. O advogado nunca recebe para aprovar um rascunho com citação não verificada, e o texto que ele mesmo edita é de responsabilidade dele.
+- Na revisão de contrato (F4), o fundamento de cada achado vem do playbook e as fontes permitidas são o corpus inteiro (CDC e súmulas do STJ, sem os dispositivos vetados): a frase que cita outra coisa sai, o achado sem fundamento conferido sai, e o relatório lista os dois. O modelo só vê a cláusula pseudonimizada.
 - A taxa de citações removidas é métrica e entra na avaliação (ver [Avaliação](AVALIACAO.md)).
 
 ## Política de HITL

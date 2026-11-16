@@ -66,6 +66,15 @@ Atributos próprios do projeto:
 | `ementa.run.id` | string | No `process run_drafting`: a execução de redação, que é também a thread |
 | `ementa.run.status` | string | Onde a perna deixou a execução: `awaiting_approval`, `finalized`, `rejected` |
 | `ementa.approval.id`, `ementa.approval.action` | string | Na retomada: a aprovação e a decisão do advogado (`approve`, `reject` ou `edit`); nunca o texto |
+| `ementa.playbook.id`, `ementa.playbook.version` | string, int | No `invoke_agent contract_review`: `consumer-services` e `1` |
+| `ementa.contract.rules_only` | bool | A revisão rodou só as regras, sem modelo |
+| `ementa.contract.clauses`, `ementa.contract.findings`, `ementa.contract.flagged` | int | Cláusulas analisadas, linhas da matriz de risco e cláusulas com risco |
+| `ementa.contract.findings.<gravidade>` | int | Linhas da matriz por gravidade: `alta`, `media`, `baixa` |
+| `ementa.contract.unreviewed` | int | Cláusulas que o modelo não avaliou (falha ou JSON inválido) |
+| `ementa.contract.clause` | string | Número da cláusula, nos spans `execute_tool check_playbook_rule` e `execute_tool classify_clause` |
+| `ementa.contract.rule_hits`, `ementa.contract.model_findings` | int | Regras que a cláusula violou; critérios que o modelo apontou nela |
+| `ementa.hitl.status` | string | `pending`, `approved`, `edited` ou `rejected`, depois de cada passo da revisão |
+| `ementa.hitl.action` | string | Na retomada: `approve`, `edit` ou `reject` |
 
 As chamadas à OpenAI usam a instrumentação oficial (`opentelemetry-instrumentation-openai-v2` 2.4b0, que cobre Chat Completions e embeddings; a Responses API não é coberta, por isso a F1 usa Chat Completions). FastAPI, httpx e psycopg entram com instrumentação automática.
 

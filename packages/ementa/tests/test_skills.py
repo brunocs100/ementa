@@ -7,6 +7,7 @@ def test_runtime_skills_follow_the_agent_skills_format() -> None:
     library = SkillLibrary(SKILLS_DIR)  # fails on any malformed SKILL.md
 
     assert [s.name for s in library.index()] == [
+        "contract-review-services",
         "deadline-calculation",
         "initial-petition-consumer",
         "legal-research",

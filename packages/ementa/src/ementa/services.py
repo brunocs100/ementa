@@ -9,6 +9,7 @@ from langgraph.store.postgres import PostgresStore
 
 from ementa.agents.assistant import AssistantAgent
 from ementa.agents.brief_drafting import BriefDraftingAgent, BriefLibrary
+from ementa.agents.contract_review import ContractReviewAgent, load_playbook
 from ementa.agents.legal_research import LegalResearchAgent
 from ementa.agents.legal_research.graph import CONTEXT_LIMIT
 from ementa.documents import (
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
 
 SKILLS_DIR = Path(__file__).resolve().parents[4] / "skills"
 FIRM_DIR = Path(__file__).resolve().parents[4] / "data" / "firm"
+CONTRACT_PLAYBOOK = FIRM_DIR / "playbooks" / "consumer-services.yaml"
 
 
 @lru_cache
@@ -183,6 +185,17 @@ def brief_drafting_agent() -> BriefDraftingAgent:
         checkpointer(),
         _pii_guard,
         BriefLibrary.from_dir(FIRM_DIR),
+    )
+
+
+@lru_cache
+def contract_review_agent() -> ContractReviewAgent:
+    """`contract_review`: the firm's playbook (`data/firm/playbooks`) over a consumer services
+    contract, up to the lawyer's approval. A run waits for the decision in the checkpointer,
+    so `resume` may come from another process. The PII guard and the corpus texts load on the
+    first review; a rules-only review loads no guard and calls no model."""
+    return ContractReviewAgent(
+        model_registry(), load_playbook(CONTRACT_PLAYBOOK), checkpointer(), _pii_guard
     )
 
 
