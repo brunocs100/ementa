@@ -317,7 +317,7 @@ data: {"event":"done","thread_id":"7c2af06a-ef81-470c-b55a-5e2cad731fe9","messag
 
 **Objetivo.** Ler um contrato de consumo de serviços, apontar as cláusulas que o playbook do escritório condena, com o fundamento no CDC ou numa súmula do STJ do corpus, e propor a redação nova de cada uma.
 
-**Gatilho e canal.** Hoje, `services.contract_review_agent().review(conteúdo, nome_do_arquivo)`. A rota `POST /v1/contracts/{id}/review`, a caixa de aprovações do console e a ferramenta MCP `review_contract` entram na integração da F4.
+**Gatilho e canal.** A rota `POST /v1/contracts/{id}/review`, sobre um documento enviado em `POST /v1/documents`: o worker lê o arquivo de `firm.documents` e roda a revisão até a aprovação, que aparece em `GET /v1/approvals` (adaptador em `contract_review/runner.py`; o resultado da execução traz o texto final, a matriz e as redlines). Fora da API, `services.contract_review_agent().review(conteúdo, nome_do_arquivo)`. A caixa de aprovações do console e a ferramenta MCP `review_contract` entram no resto da F4.
 
 **Padrão e por quê.** Map-reduce por cláusula. Cada cláusula vai a um `analyze_clause` próprio com `Send` do LangGraph, em paralelo e com contexto pequeno: o modelo nunca vê o contrato inteiro. Dentro do map, as regras do playbook rodam primeiro, por código; os critérios que pedem julgamento vão depois ao modelo `fast`. A redução junta os achados numa linha por cláusula e regra.
 

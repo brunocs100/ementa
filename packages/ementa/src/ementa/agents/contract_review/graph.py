@@ -569,6 +569,39 @@ class ContractReviewAgent:
 
     # Entry points ------------------------------------------------------------------------
 
+    def inputs(
+        self,
+        content: bytes | str,
+        filename: str,
+        *,
+        media_type: str | None = None,
+        document_id: str | None = None,
+        requested_by: str | None = None,
+        rules_only: bool = False,
+    ) -> State:
+        """The graph's input for a review of `content`, checked as `review` checks it: a file
+        out of the accepted types raises DocumentRejectedError, and unless `rules_only`, a model
+        without a key raises ModelUnavailableError."""
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        upload = Upload.accept(filename, media_type, data)
+        if not rules_only:
+            self.models.chat(ModelRole.FAST)
+        return {
+            "filename": upload.filename,
+            "media_type": upload.media_type.value,
+            "content": upload.content,
+            "document_id": document_id,
+            "requested_by": requested_by,
+            "rules_only": rules_only,
+            "playbook": self.playbook.label,
+            "prompt": None if rules_only else self.prompt_label,
+            "model": None if rules_only else self.models.spec(ModelRole.FAST).model,
+        }
+
+    def report(self, values: Mapping[str, Any]) -> ContractReport:
+        """The report in a review's state, as `get` builds it."""
+        return self._report(cast(State, values))
+
     def review(
         self,
         content: bytes | str,
@@ -587,25 +620,18 @@ class ContractReviewAgent:
         raises ModelUnavailableError here, before anything runs. `thread_id` names the run for
         `resume`; a thread that holds a review already raises ReviewExistsError.
         """
-        data = content.encode("utf-8") if isinstance(content, str) else content
-        upload = Upload.accept(filename, media_type, data)
-        if not rules_only:
-            self.models.chat(ModelRole.FAST)
         thread = thread_id or str(uuid.uuid4())
+        inputs = self.inputs(
+            content,
+            filename,
+            media_type=media_type,
+            document_id=document_id,
+            requested_by=requested_by,
+            rules_only=rules_only,
+        )
         config = _config(thread)
         if self.graph.get_state(config).values:
             raise ReviewExistsError(thread)
-        inputs: State = {
-            "filename": upload.filename,
-            "media_type": upload.media_type.value,
-            "content": upload.content,
-            "document_id": document_id,
-            "requested_by": requested_by,
-            "rules_only": rules_only,
-            "playbook": self.playbook.label,
-            "prompt": None if rules_only else self.prompt_label,
-            "model": None if rules_only else self.models.spec(ModelRole.FAST).model,
-        }
         with self._span(thread, rules_only) as span:
             self.graph.invoke(inputs, config)
             run = self.get(thread)

@@ -250,9 +250,11 @@ def drafting_agents() -> dict[str, DraftingAgent]:
     POST /v1/briefs and `contract_review` behind POST /v1/contracts/{id}/review. An agent adds
     its line here when it lands; until then its route answers 503."""
     from ementa.agents.brief_drafting.runner import BriefDraftingRun
+    from ementa.agents.contract_review.runner import ContractReviewRun
 
     brief = BriefDraftingRun(brief_drafting_agent())
-    return {brief.id: brief}
+    contract = ContractReviewRun(contract_review_agent(), document_store())
+    return {brief.id: brief, contract.id: contract}
 
 
 @lru_cache
