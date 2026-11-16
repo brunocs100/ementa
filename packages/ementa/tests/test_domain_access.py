@@ -1,7 +1,12 @@
 import pytest
 
 from ementa.domain.access import (
+    APPROVAL_ROUTE,
+    APPROVALS_ROUTE,
     AUDIT_EVENTS_ROUTE,
+    BRIEFS_ROUTE,
+    CONTRACT_REVIEW_ROUTE,
+    DECIDE_ROUTE,
     LEGAL_RESEARCH_ROUTE,
     OPEN_ROUTES,
     PERMISSIONS,
@@ -10,6 +15,8 @@ from ementa.domain.access import (
     Role,
     can_call_route,
     can_use_tool,
+    decides_every_run,
+    may_decide,
 )
 
 AUDIT_READERS = {Role.SOCIA, Role.DPO, Role.TI}
@@ -46,3 +53,41 @@ def test_roles_arrive_as_text_from_agent_state() -> None:
 def test_only_the_token_route_is_open_and_no_role_needs_it() -> None:
     assert frozenset({TOKEN_ROUTE}) == OPEN_ROUTES
     assert not any(TOKEN_ROUTE in grants.routes for grants in PERMISSIONS.values())
+
+
+DRAFTING_ROUTES = [
+    BRIEFS_ROUTE,
+    CONTRACT_REVIEW_ROUTE,
+    APPROVALS_ROUTE,
+    APPROVAL_ROUTE,
+    DECIDE_ROUTE,
+]
+
+
+@pytest.mark.parametrize("role", list(Role))
+def test_only_who_may_approve_drafts_and_reaches_the_approvals(role: Role) -> None:
+    allowed = role in {Role.SOCIA, Role.ASSOCIADO}
+
+    assert all(can_call_route(role, route) is allowed for route in DRAFTING_ROUTES)
+
+
+@pytest.mark.parametrize(
+    ("role", "user_id", "requested_by", "allowed"),
+    [
+        (Role.SOCIA, "u-socia", "u-associado", True),
+        (Role.SOCIA, "u-socia", "u-socia", True),
+        (Role.ASSOCIADO, "u-associado", "u-associado", True),
+        (Role.ASSOCIADO, "u-associado", "u-outro", False),
+        (Role.ASSOCIADO, "", "", False),
+        (Role.ESTAGIARIO, "u-estagiario", "u-estagiario", False),
+        (Role.CONTROLADORIA, "u-c", "u-c", False),
+        (Role.DPO, "u-dpo", "u-dpo", False),
+        (Role.TI, "u-ti", "u-ti", False),
+        ("cliente", "u-x", "u-x", False),
+    ],
+)
+def test_the_socia_decides_any_run_and_the_associado_only_their_own(
+    role: Role | str, user_id: str, requested_by: str, allowed: bool
+) -> None:
+    assert may_decide(role, user_id, requested_by) is allowed
+    assert decides_every_run(role) is (role == Role.SOCIA)

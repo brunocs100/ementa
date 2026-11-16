@@ -157,9 +157,13 @@ O ABAC (controle por atributo) complementa a tabela com atributos do processo: �
 |---|---|---|---|---|---|---|
 | `POST /v1/legal-research` | Sim | Sim | Sim | Sim | Sim | Sim |
 | `GET /v1/audit/events` | Sim | Não | Não | Não | Sim | Sim |
+| `POST /v1/briefs`, `POST /v1/contracts/{document_id}/review` | Sim | Sim | Não | Não | Não | Não |
+| `GET /v1/approvals`, `GET /v1/approvals/{approval_id}`, `POST /v1/approvals/{approval_id}` | Sim, todas | Sim, nas execuções que pediu | Não | Não | Não | Não |
 | Ferramentas de dado público: `legal_research`, `search_legal_corpus`, `answer_legal_question`, `get_statute_article`, `calculate_deadline`, `list_skills`, `load_skill` | Sim | Sim | Sim | Sim | Sim | Sim |
 
 `POST /v1/auth/token` é a única rota aberta. O associado ainda não lê a auditoria, porque "os seus" pede um filtro por autor que a rota não tem. Hoje toda ferramenta devolve dado público e serve a todos os papéis; a primeira ferramenta restrita entra com linha própria.
+
+"Aprovar peça ou relatório" vira duas regras. A matriz concede as rotas de redação e de aprovação à sócia e ao associado; dentro delas, `may_decide(papel, usuário, quem_pediu)` deixa a sócia ver e decidir qualquer execução e o associado só as que ele pediu. Para o associado, a aprovação de outra pessoa não existe: a caixa não a lista, e a leitura e a decisão respondem 404, como um id que não existe. Só quem pode aprovar inicia uma redação, então toda execução tem alguém que a decida: a do associado, ele e a sócia; a da sócia, ela. A tabela não diz se o estagiário redige para o orientador aprovar; até isso ser decidido, ele não inicia execução. A análise de contrato roda só sobre um documento que o usuário enviou (está no `acl` dele); o de outra pessoa responde 404.
 
 ## RLS no Postgres
 
@@ -218,6 +222,7 @@ sequenceDiagram
 ```
 
 - Na pesquisa (`/v1/legal-research` e MCP) o cofre vive em memória, por requisição. No chat (F3) ele vive no estado da conversa, no checkpointer: um mapeamento por thread, que dura o mesmo que o histórico, porque o histórico só se reidrata com ele. Um Redis com TTL curto, como estava previsto, apagaria os valores antes da conversa e deixaria o histórico com marcadores. A troca: o valor real fica em repouso no Postgres (schema `langgraph`), protegido pelo acesso ao banco, e apagar os dados de um titular precisa apagar também as threads em que ele aparece (`delete_thread` do checkpointer). O valor real não vai para log nem para span.
+- Na peça (F4), o `brief_drafting` mascara a descrição do caso no primeiro nó, com um mapeamento por execução guardado no estado da thread, e reidrata só o rascunho que vai ao advogado. As peças aprovadas que entram como exemplo passam pelo guardrail com uma cópia desse mapeamento, descartada depois: se o modelo copiar o marcador de um caso antigo, ele fica como marcador e nunca vira, na peça nova, o nome de outro cliente.
 - Só o usuário autorizado recebe a resposta reidratada: no chat, só quem abriu a conversa a lê de volta; para qualquer outro, a conversa não existe (404). Para cliente MCP externo, o marcador fica.
 - No streaming do chat, cada token sai reidratado. O fim do texto fica retido enquanto pode virar marcador (`[CP` antes de `F_1]`), para nenhum marcador partido chegar à tela nem escapar da reidratação; o detalhe está na [Arquitetura](ARQUITETURA.md#chat-em-sse-f3).
 - O cofre é o mapeamento de marcador para valor que `pseudonymize` devolve. O chamador o passa de volta a cada turno, e o mesmo valor mantém o marcador na conversa toda, mesmo com outra pontuação (`123.456.789-09` e `12345678909` viram `[CPF_1]`) ou, num nome, sem acento.
@@ -255,6 +260,8 @@ Modelo de NER: em 51 frases jurídicas fictícias com 33 nomes, já com o format
 - O modelo recebe as fontes com ids canônicos (`cdc:art49`, `cdc:art42:pu`, `cpc:art219`, `stj:sumula:385`) e cita por id.
 - O verificador extrai toda citação da resposta (id e menção textual, como "art. 49 do CDC") e confere contra as fontes que foram para o contexto daquela chamada. Citação fora delas é removida, mesmo que exista no corpus.
 - Citação não encontrada: na pesquisa, é removida e a resposta ganha um aviso; na peça, a finalização é bloqueada até revisão.
+- Na peça (`brief_drafting`, F4), as fontes permitidas são as que o `legal_research` verificou para as teses. Citação que falha manda o rascunho de volta ao modelo uma vez, com o motivo; se falhar de novo, a frase sai e o resumo da aprovação a lista. O advogado nunca recebe para aprovar um rascunho com citação não verificada, e o texto que ele mesmo edita é de responsabilidade dele.
+- Na revisão de contrato (F4), o fundamento de cada achado vem do playbook e as fontes permitidas são o corpus inteiro (CDC e súmulas do STJ, sem os dispositivos vetados): a frase que cita outra coisa sai, o achado sem fundamento conferido sai, e o relatório lista os dois. O modelo só vê a cláusula pseudonimizada.
 - A taxa de citações removidas é métrica e entra na avaliação (ver [Avaliação](AVALIACAO.md)).
 
 ## Política de HITL
@@ -269,6 +276,16 @@ Modelo de NER: em 51 frases jurídicas fictícias com 33 nomes, já com o format
 | Responder pesquisa | Não | Resposta marcada como rascunho |
 
 A aprovação guarda quem aprovou, quando e o diff entre o rascunho e a versão final. O diff alimenta a memória episódica e o dataset de fine-tuning.
+
+Como a F4 faz valer a política nas peças e nos relatórios de contrato (o fluxo está em [Arquitetura](ARQUITETURA.md#execução-com-aprovação-f4)):
+
+| Garantia | Onde |
+|---|---|
+| Nada finalizado sem decisão | O agente para em `ask_for_approval`; o runner só retoma com a decisão gravada em `ai.approvals`; o grafo que termina sem ter perguntado falha a execução, sem resultado |
+| Quem decide | A sócia, em qualquer execução; o associado, nas que pediu (`may_decide`); mais ninguém. Para os outros, a aprovação responde 404 |
+| Uma decisão por aprovação | O `update` só pega aprovação pendente; outra decisão depois dela responde 409. A mesma decisão de novo só põe a retomada na fila outra vez, sem gravar nada |
+| A decisão retoma a pergunta certa | A retomada vai endereçada ao `interrupt` da aprovação; repetida, não responde uma pergunta mais nova |
+| Registro | `ai.approvals` guarda a decisão como retoma o grafo, quem decidiu, quando e o diff; o evento de auditoria `approval.decide` registra a decisão |
 
 ## Auditoria
 
@@ -294,12 +311,13 @@ CREATE TABLE audit.events (
 - Um gatilho recusa UPDATE, DELETE e TRUNCATE, inclusive do dono da tabela. O `prev_hash` único impede que dois eventos apontem para o mesmo anterior. A escrita usa um lock consultivo (advisory lock), que não pede privilégio além de INSERT.
 - A cadeia genérica fica no kit (`ementa_kit.audit`: `AuditEvent`, `PgAuditLog`, `verify_chain`). A ligação com o escritório fica em `ementa.services.audit_log()`, na API e na CLI.
 - A API grava um evento por pedido a `/v1`, depois da resposta: quem chamou (o id do token), a rota pelo modelo do caminho, o status e a duração. Nunca o corpo, a query string ou os valores do caminho, que podem ter dado pessoal. Pedido negado, inválido ou com erro também entra. Resposta em streaming entra quando termina. Falha ao gravar vai para o log e não derruba o pedido.
+- Cada decisão de aprovação é um evento próprio (F4), além do evento do pedido HTTP: ação `approval.decide`, `actor` quem decidiu, `resource` o agente, a classe de dado da aprovação e, em `details`, `approval_id`, `run_id`, `kind`, `action` e `requested_by`. Nunca o texto editado nem o comentário. A mesma decisão mandada de novo não gera outro evento. Falha ao gravar vai para o log e a decisão fica de pé: ela já está em `ai.approvals`, com quem e quando.
 - `GET /v1/audit/events` lista os eventos do mais novo ao mais antigo, com paginação por cursor, para sócia, DPO e TI.
 - `uv run ementa audit verify` percorre a cadeia, refaz cada hash e aponta o primeiro elo quebrado, saindo com código 1. O job diário que roda esse comando e alerta na quebra fica para a operação (F7).
 
 Limites, ditos às claras:
 
-- Hoje a trilha registra os pedidos HTTP. Chamadas a modelo, ferramenta e guardrail entram com o mesmo `AuditEvent` (ação `tool.call`, por exemplo) quando os agentes passarem a gravar.
+- Hoje a trilha registra os pedidos HTTP e as decisões de aprovação. Chamadas a modelo, ferramenta e guardrail entram com o mesmo `AuditEvent` (ação `tool.call`, por exemplo) quando os agentes passarem a gravar.
 - Em dev e no CI, a aplicação conecta como dona das tabelas, e o gatilho é a trava. Em produção, o papel da aplicação deve ter só INSERT e SELECT em `audit.events` (F6), com o schema criado pelo dono.
 - A cadeia sozinha não pega quem reescreve a tabela inteira e refaz todos os hashes, nem quem apaga só os últimos eventos. Para esses casos, guarde fora do banco o último hash que `audit verify` mostra e compare depois.
 
@@ -355,6 +373,7 @@ Retenção: na F1 as chamadas usam Chat Completions sem `store` (o padrão é n�
 - O id do titular é `ds_` mais um HMAC-SHA-256 do tipo e do valor, com a chave `EMENTA_DATA_SUBJECT_KEY`. O CPF formatado ou não dá o mesmo id. Sem a chave, o id não leva de volta ao CPF, nem testando todos. A produção não sobe o escritor sem chave própria. Trocar a chave deixa sem dono os ids já gravados: antes, é preciso reetiquetar as memórias.
 - O DPO acha os ids com `ementa.memory.data_subject_ids("Maria Souza, CPF ...")`, que devolve um id por valor achado e nunca o valor. A rota recebe só o id: um CPF no caminho é recusado com 422, e o erro não o repete, porque o `instance` é o modelo da rota, não o caminho enviado.
 - A resposta e o span do esquecimento guardam só a contagem. O evento de auditoria (quem pediu e quantas saíram) entra com a trilha de `audit.events`.
+- A memória episódica (F4) guarda o rascunho aprovado e a edição do advogado já pseudonimizados: título, rascunho, texto final e comentário passam pelo guardrail antes do store, com um mapeamento só. O episódio vira exemplo em processos de outros clientes, e ali o nome e o CPF de quem estava no primeiro não têm finalidade (art. 6º, III). Os ids dos titulares trocados etiquetam o episódio, e o esquecimento o apaga com as outras memórias. O texto em claro fica só na aprovação, em `ai.approvals`, que o esquecimento ainda não alcança: entra com o apagamento das threads, junto com o cofre de marcadores.
 - Limites conhecidos: a etiqueta vem do que o guardrail de PII acha no texto. O nome sozinho e o CPF são titulares distintos, então o DPO esquece por todos os identificadores que tiver. Memória que fala da pessoa sem identificá-la ("o cliente quer acordo") não leva etiqueta e fica.
 
 ## Runbook de incidente

@@ -681,6 +681,604 @@
         }
       }
     },
+    "/v1/briefs": {
+      "post": {
+        "tags": [
+          "drafting"
+        ],
+        "summary": "Inicia a redação de uma peça, com aprovação do advogado",
+        "description": "Inicia a redação de uma peça pelo `brief_drafting` e responde 202 com a execução e a tarefa. O rascunho entra na caixa de aprovações (`GET /v1/approvals`) quando o agente para para a revisão do advogado; nada é finalizado sem a decisão. Com `Idempotency-Key`, o mesmo pedido de novo devolve a mesma execução e, se ela tinha falhado, a põe na fila outra vez. Só sócia e associado.",
+        "operationId": "start_brief_v1_briefs_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "pattern": "^[\\x21-\\x7e]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Chave do cliente para repetir o pedido sem criar outra execução",
+              "title": "Idempotency-Key"
+            },
+            "description": "Chave do cliente para repetir o pedido sem criar outra execução"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BriefRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/v1/contracts/{document_id}/review": {
+      "post": {
+        "tags": [
+          "drafting"
+        ],
+        "summary": "Inicia a análise de um contrato enviado, com aprovação do advogado",
+        "description": "Inicia a análise pelo `contract_review` de um contrato enviado em `POST /v1/documents` e responde 202 com a execução e a tarefa. O documento tem de ser seu; o de outra pessoa responde 404, como um que não existe. O relatório entra na caixa de aprovações antes de sair. Só sócia e associado.",
+        "operationId": "review_contract_v1_contracts__document_id__review_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "pattern": "^[\\x21-\\x7e]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Chave do cliente para repetir o pedido sem criar outra execução",
+              "title": "Idempotency-Key"
+            },
+            "description": "Chave do cliente para repetir o pedido sem criar outra execução"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/v1/approvals": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Caixa de aprovações",
+        "description": "A caixa de aprovações, da mais antiga à mais nova: por padrão as pendentes. A sócia vê as de todas as execuções; o associado, as das execuções que ele pediu. Para a próxima página, mande o `next_cursor` recebido em `cursor`.",
+        "operationId": "inbox_v1_approvals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ApprovalStatus",
+              "description": "Pendentes por padrão",
+              "default": "pending"
+            },
+            "description": "Pendentes por padrão"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "O `next_cursor` da página anterior",
+              "title": "Cursor"
+            },
+            "description": "O `next_cursor` da página anterior"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Aprovações por página",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Aprovações por página"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/v1/approvals/{approval_id}": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Uma aprovação, com o rascunho e o estado da execução",
+        "operationId": "get_approval_v1_approvals__approval_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Approval Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Aprova, rejeita ou edita um rascunho pendente",
+        "description": "Aprova, rejeita ou edita um rascunho pendente e responde 202: a execução volta à fila e o agente retoma com a decisão. `edit` leva o texto editado em `text`; `approve` e `reject`, nenhum. A decisão é definitiva: outra depois dela responde 409, e a mesma de novo só põe a retomada na fila outra vez. Cada decisão é um evento de auditoria. A sócia decide qualquer execução; o associado, só as que pediu.",
+        "operationId": "decide_v1_approvals__approval_id__post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Approval Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionAccepted"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/v1/approvals/{approval_id}/docx": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "Baixa em DOCX: o rascunho com o aviso, ou o texto aprovado com quem aprovou",
+        "operationId": "approval_docx_v1_approvals__approval_id__docx_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Approval Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "O documento em DOCX",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -837,6 +1435,244 @@
           "model"
         ],
         "title": "AnswerLegalQuestionOutput"
+      },
+      "ApprovalOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "agent": {
+            "type": "string",
+            "title": "Agent"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "O que se aprova: `brief`, `contract_report`"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "Por que o agente parou e o que conferir"
+          },
+          "data_class": {
+            "$ref": "#/components/schemas/DataClass"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
+          "requested_by": {
+            "type": "string",
+            "title": "Requested By",
+            "description": "Quem pediu a execução"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "draft": {
+            "type": "string",
+            "title": "Draft",
+            "description": "O rascunho como o agente o finalizaria"
+          },
+          "final_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Text",
+            "description": "O que segue adiante: o rascunho, se aprovado; o texto do advogado, se editado"
+          },
+          "diff": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff",
+            "description": "Do rascunho ao texto final, em diff unificado"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecisionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "run_id",
+          "agent",
+          "kind",
+          "title",
+          "summary",
+          "data_class",
+          "status",
+          "requested_by",
+          "created_at",
+          "decided_at",
+          "draft",
+          "final_text",
+          "diff",
+          "decision",
+          "run"
+        ],
+        "title": "ApprovalOut"
+      },
+      "ApprovalPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ApprovalPage"
+      },
+      "ApprovalStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected",
+          "edited"
+        ],
+        "title": "ApprovalStatus"
+      },
+      "ApprovalSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "agent": {
+            "type": "string",
+            "title": "Agent"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "O que se aprova: `brief`, `contract_report`"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "Por que o agente parou e o que conferir"
+          },
+          "data_class": {
+            "$ref": "#/components/schemas/DataClass"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
+          "requested_by": {
+            "type": "string",
+            "title": "Requested By",
+            "description": "Quem pediu a execução"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "run_id",
+          "agent",
+          "kind",
+          "title",
+          "summary",
+          "data_class",
+          "status",
+          "requested_by",
+          "created_at",
+          "decided_at"
+        ],
+        "title": "ApprovalSummary"
       },
       "AuditEventOut": {
         "properties": {
@@ -1014,6 +1850,50 @@
         ],
         "title": "Body_upload_document_v1_documents_post"
       },
+      "BriefRequest": {
+        "properties": {
+          "facts": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Facts",
+            "description": "Os fatos do caso, como o advogado os conta"
+          },
+          "kind": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "title": "Kind",
+            "description": "Tipo da peça: `peticao_inicial`, `contestacao`, `recurso`",
+            "default": "peticao_inicial"
+          },
+          "case_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Id",
+            "description": "Processo da peça, se houver"
+          },
+          "template": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Template",
+            "description": "Modelo do escritório: `initial-petition-credit-listing` (negativação indevida) ou `initial-petition-product-defect` (vício do produto)",
+            "default": "initial-petition-credit-listing"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "facts"
+        ],
+        "title": "BriefRequest"
+      },
       "ChatRequest": {
         "properties": {
           "message": {
@@ -1106,6 +1986,116 @@
         ],
         "title": "DataClass",
         "description": "What a tool returns. It decides what may leave to a cloud model or an external MCP client."
+      },
+      "DecisionAccepted": {
+        "properties": {
+          "approval": {
+            "$ref": "#/components/schemas/ApprovalOut"
+          },
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "A retomada na fila; o estado está em `GET /v1/jobs/{job_id}`"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approval",
+          "job_id"
+        ],
+        "title": "DecisionAccepted"
+      },
+      "DecisionIn": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject",
+              "edit"
+            ],
+            "title": "Action"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "O texto editado; só com `edit`"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment",
+            "description": "Nota do advogado"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "DecisionIn"
+      },
+      "DecisionOut": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject",
+              "edit"
+            ],
+            "title": "Action"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "decided_by": {
+            "type": "string",
+            "title": "Decided By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "text",
+          "comment",
+          "decided_by"
+        ],
+        "title": "DecisionOut"
       },
       "DoneEvent": {
         "properties": {
@@ -1520,6 +2510,120 @@
           "reason"
         ],
         "title": "RemovedOut"
+      },
+      "RunAccepted": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "A execução, que também é a thread do agente"
+          },
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "A tarefa na fila; o estado está em `GET /v1/jobs/{job_id}`"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "duplicate": {
+            "type": "boolean",
+            "title": "Duplicate",
+            "description": "A mesma `Idempotency-Key` já tinha iniciado esta execução: nada foi gravado."
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "job_id",
+          "status",
+          "duplicate"
+        ],
+        "title": "RunAccepted"
+      },
+      "RunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "agent": {
+            "type": "string",
+            "title": "Agent"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "requested_by": {
+            "type": "string",
+            "title": "Requested By"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "O que o agente produziu, depois que a execução terminou"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "agent",
+          "status",
+          "requested_by",
+          "result",
+          "error",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "RunOut"
+      },
+      "RunStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "awaiting_approval",
+          "finalized",
+          "rejected",
+          "failed"
+        ],
+        "title": "RunStatus"
       },
       "StepEvent": {
         "properties": {

@@ -19,6 +19,7 @@ from ementa.tools.research import (
     AnswerLegalQuestionOutput,
 )
 from ementa.users import FirmUser
+from ementa_api.approvals import DocumentLookup, Drafting, drafting_router
 from ementa_api.audit import AUDIT_DESCRIPTION, AuditEventOut, AuditMiddleware, AuditPage
 from ementa_api.auth import (
     TOKEN_URL,
@@ -106,9 +107,12 @@ def create_app(
     assistant: Callable[[], Assistant] = services.assistant_agent,
     can_use_tool: Callable[[Role, str], bool] = role_can_use_tool,
     documents: Callable[[], Intake] = services.document_intake,
+    drafting: Callable[[], Drafting] = services.drafting_intake,
+    firm_documents: Callable[[], DocumentLookup] = services.document_store,
 ) -> FastAPI:
     """`can_use_tool(role, tool)` decides which of the assistant's tools a role gets; the
-    default is the permission matrix in `ementa.domain.access`."""
+    default is the permission matrix in `ementa.domain.access`. `drafting` runs the drafting
+    agents and their approvals; `firm_documents` finds the contract a review is asked for."""
     check_jwt_settings(get_settings())  # fails here, at startup, in prod without a secret
     app = FastAPI(
         title="Ementa API",
@@ -197,6 +201,7 @@ def create_app(
         )
 
     app.include_router(documents_router(documents))
+    app.include_router(drafting_router(drafting, firm_documents))
 
     @app.get("/healthz", response_model=Health, tags=["ops"], summary="O processo está de pé")
     def healthz() -> Health:

@@ -174,7 +174,12 @@ def test_list_skills_shows_only_name_and_description() -> None:
 
     assert not result.is_error
     data = result.structured_content
-    assert [s["name"] for s in data["skills"]] == ["deadline-calculation", "legal-research"]
+    assert [s["name"] for s in data["skills"]] == [
+        "contract-review-services",
+        "deadline-calculation",
+        "initial-petition-consumer",
+        "legal-research",
+    ]
     assert all(set(s) == {"name", "description"} for s in data["skills"])
     assert data["data_class"] == "public"
 
@@ -194,7 +199,8 @@ def test_load_skill_reports_unknown_skills_and_rejects_bad_names() -> None:
 
     assert unknown.is_error
     assert (
-        "Skill desconhecida: contract-review. Disponíveis: deadline-calculation, legal-research."
+        "Skill desconhecida: contract-review. Disponíveis: contract-review-services, "
+        "deadline-calculation, initial-petition-consumer, legal-research."
         in unknown.content[0].text
     )
     assert call("load_skill", {"name": "../legal-research"}).is_error

@@ -8,6 +8,8 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.store.postgres import PostgresStore
 
 from ementa.agents.assistant import AssistantAgent
+from ementa.agents.brief_drafting import BriefDraftingAgent, BriefLibrary
+from ementa.agents.contract_review import ContractReviewAgent, load_playbook
 from ementa.agents.legal_research import LegalResearchAgent
 from ementa.agents.legal_research.graph import CONTEXT_LIMIT
 from ementa.documents import (
@@ -22,9 +24,11 @@ from ementa.prompts import get_prompt
 from ementa.users import UserDirectory
 from ementa_kit.audit import PgAuditLog
 from ementa_kit.config import get_settings
+from ementa_kit.hitl.runner import DraftingAgent, DraftingIntake, DraftingRunner
+from ementa_kit.hitl.store import PgDraftingStore
 from ementa_kit.jobs import JobQueue, PgJobStore
 from ementa_kit.llm import Budget, ModelRegistry, PgUsageLedger, track_usage
-from ementa_kit.memory import MemoryWriter, open_postgres_store, postgres_checkpointer
+from ementa_kit.memory import Episodes, MemoryWriter, open_postgres_store, postgres_checkpointer
 from ementa_kit.rag import FastEmbedder, FastReranker, PgHybridStore
 from ementa_kit.skills import SkillLibrary
 from ementa_kit.telemetry import instrument_openai
@@ -34,6 +38,8 @@ if TYPE_CHECKING:
     from ementa_kit.guardrails.pii import PiiGuard
 
 SKILLS_DIR = Path(__file__).resolve().parents[4] / "skills"
+FIRM_DIR = Path(__file__).resolve().parents[4] / "data" / "firm"
+CONTRACT_PLAYBOOK = FIRM_DIR / "playbooks" / "consumer-services.yaml"
 
 
 @lru_cache
@@ -168,6 +174,31 @@ def assistant_agent() -> AssistantAgent:
     )
 
 
+@lru_cache
+def brief_drafting_agent() -> BriefDraftingAgent:
+    """The brief drafting agent, with the firm's templates and opinions from `data/firm/`
+    (a malformed file fails here). The research agent and the PII guard load on the first run;
+    a run waiting for the lawyer's approval lives in the checkpointer, across restarts."""
+    return BriefDraftingAgent(
+        model_registry(),
+        legal_research_agent,
+        checkpointer(),
+        _pii_guard,
+        BriefLibrary.from_dir(FIRM_DIR),
+    )
+
+
+@lru_cache
+def contract_review_agent() -> ContractReviewAgent:
+    """`contract_review`: the firm's playbook (`data/firm/playbooks`) over a consumer services
+    contract, up to the lawyer's approval. A run waits for the decision in the checkpointer,
+    so `resume` may come from another process. The PII guard and the corpus texts load on the
+    first review; a rules-only review loads no guard and calls no model."""
+    return ContractReviewAgent(
+        model_registry(), load_playbook(CONTRACT_PLAYBOOK), checkpointer(), _pii_guard
+    )
+
+
 def _pii_guard() -> "PiiGuard":
     from ementa.pii import pii_guard  # Presidio and spaCy take seconds to import
 
@@ -196,9 +227,57 @@ def document_intake() -> DocumentIntake:
 
 @lru_cache
 def document_ingestor() -> DocumentIngestor:
-    """What the worker runs. Loads the embedding model, which takes a few seconds."""
+    """What the worker runs. Loads the embedding model, which takes a few seconds; the episodic
+    memory of the drafting runs shares it."""
     settings = get_settings()
-    embedder = FastEmbedder(settings.embedding_model)
+    embedder = local_embedder()
     chunks = PgHybridStore(settings.database_url, embedder.dim, schema=FIRM_KNOWLEDGE)
     chunks.ensure_schema()
     return DocumentIngestor(document_store(), chunks, embedder)
+
+
+@lru_cache
+def drafting_store() -> PgDraftingStore:
+    """`ai.runs` and `ai.approvals`; the tables are created on first use."""
+    store = PgDraftingStore(get_settings().database_url)
+    store.ensure_schema()
+    return store
+
+
+@lru_cache
+def drafting_agents() -> dict[str, DraftingAgent]:
+    """The drafting agents, by id, each compiled with `checkpointer()`: `brief_drafting` behind
+    POST /v1/briefs and `contract_review` behind POST /v1/contracts/{id}/review. An agent adds
+    its line here when it lands; until then its route answers 503."""
+    from ementa.agents.brief_drafting.runner import BriefDraftingRun
+    from ementa.agents.contract_review.runner import ContractReviewRun
+
+    brief = BriefDraftingRun(brief_drafting_agent())
+    contract = ContractReviewRun(contract_review_agent(), document_store())
+    return {brief.id: brief, contract.id: contract}
+
+
+@lru_cache
+def episodes() -> Episodes:
+    """Episodic memory: approved and edited drafts, pseudonymized, as few-shot examples. It
+    lives in the long-term memory store, so forgetting a data subject reaches it."""
+    return Episodes(memory_store(), _pii_guard, subject_key=subject_key(get_settings()))
+
+
+@lru_cache
+def drafting_intake() -> DraftingIntake:
+    """What the drafting routes call: Postgres for the runs, the decisions and the jobs, Redis
+    for the queue, and an audit event for each decision."""
+    return DraftingIntake(
+        drafting_store(),
+        job_store(),
+        JobQueue(get_settings().redis_url),
+        audit_log(),
+        agents=drafting_agents().keys(),
+    )
+
+
+@lru_cache
+def drafting_runner() -> DraftingRunner:
+    """What the worker runs for each leg of a drafting run."""
+    return DraftingRunner(drafting_agents(), drafting_store(), episodes())

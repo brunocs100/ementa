@@ -22,14 +22,14 @@ A instrumentação segue as convenções semânticas de GenAI do OpenTelemetry. 
 
 | Span | Quando abre | Atributos principais |
 |---|---|---|
-| `invoke_agent` | Início de uma execução de agente | `gen_ai.operation.name`, `gen_ai.agent.name`, `gen_ai.conversation.id`, `ementa.cost_usd` (soma) |
+| `invoke_agent` | Início de uma execução de agente; num agente de redação, cada perna (o início ou uma retomada), aberto pelo runner no worker | `gen_ai.operation.name`, `gen_ai.agent.name`, `gen_ai.conversation.id` (a thread; na redação, o id da execução), `ementa.cost_usd` (soma); na redação, `ementa.run.status` e, na retomada, `ementa.approval.id` e `ementa.approval.action` |
 | `chat` | Cada chamada a modelo | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `ementa.prompt.id`, `ementa.prompt.version`, `ementa.policy.route`, `ementa.cost_usd` |
 | `execute_tool` | Cada ferramenta | `gen_ai.tool.name`, classe de dado, resultado (ok ou erro), tamanho da saída |
-| `retrieval` | Cada busca na base de conhecimento ou na memória (`retrieval memory`) | Modo (vetorial, textual, fusão, rerank), top_k, ids das fontes, duração por etapa |
+| `retrieval` | Cada busca na base de conhecimento ou na memória (`retrieval memory`; na episódica, com `gen_ai.data_source.id` `episodes`) | Modo (vetorial, textual, fusão, rerank), top_k, ids das fontes, duração por etapa |
 | `guardrail` | Cada verificação do pipeline | Nome da verificação, `ementa.guardrail.decision`, motivo |
-| `memory` | Escrita da memória depois da execução (`memory write`) e esquecimento de um titular (`memory forget`) | `ementa.memory.operation` e contagens; nunca texto nem id de titular |
+| `memory` | Escrita da memória depois da execução (`memory write`), também a de um episódio, e esquecimento de um titular (`memory forget`) | `ementa.memory.operation` (`write`, `episode` ou `forget`) e contagens; nunca texto nem id de titular |
 | `send <tarefa>` | A API põe uma tarefa na fila (produtor) | `messaging.system` (`arq`), `messaging.destination.name`, `messaging.message.id` (id da tarefa), `ementa.job.kind`, `ementa.job.enqueued` |
-| `process <tarefa>` | Cada tentativa de uma tarefa no worker (consumidor), filho do `send` | `messaging.message.id`, `ementa.job.kind`, `ementa.job.attempt`, `ementa.job.outcome`, `ementa.job.retry_in_s`, `ementa.document.id`, `ementa.document.chunks` |
+| `process <tarefa>` | Cada tentativa de uma tarefa no worker (consumidor), filho do `send` | `messaging.message.id`, `ementa.job.kind`, `ementa.job.attempt`, `ementa.job.outcome`, `ementa.job.retry_in_s`, `ementa.document.id`, `ementa.document.chunks`; no `run_drafting`, `ementa.run.id`, `ementa.approval.id` (na retomada) e `ementa.run.status` |
 | `embeddings <modelo>` | Embeddings locais de um documento no worker | `gen_ai.operation.name`, `gen_ai.request.model`, `ementa.embedding.passages` |
 
 O contexto do trace vai junto com a tarefa no Redis, então o upload e a indexação aparecem num trace só, com a API no serviço `ementa` e o worker no `ementa-worker`.
@@ -56,6 +56,25 @@ Atributos próprios do projeto:
 | `ementa.context.compacted` | evento no span corrente (no `assistant`, o `invoke_agent` do turno que compacta), com `messages.before`, `tokens.before`, `tokens.after` e o prompt do resumo | `{"messages.before": 41, "tokens.before": 9120, "tokens.after": 520, ...}` |
 | `ementa.area` | string | `consumidor`: área de atuação dos spans GenAI abertos dentro de `practice_area()` |
 | `ementa.job.outcome` | string | `succeeded`, `retry` ou `failed`, por tentativa |
+| `ementa.brief.template`, `ementa.brief.theses`, `ementa.brief.grounded`, `ementa.brief.drafts` | string, int | No `invoke_agent brief_drafting`: o modelo de peça, as teses planejadas, as que têm fonte verificada e os rascunhos escritos |
+| `ementa.brief.verdict` | string | Último veredito do crítico da peça: `passed`, `failed` ou `unavailable` (resposta fora do formato) |
+| `ementa.brief.citations`, `ementa.brief.removed` | string[], int | Fontes citadas no rascunho que foi à aprovação e citações não verificadas tiradas dele |
+| `ementa.brief.thesis` | string | No `execute_tool legal_research` do `brief_drafting`: a tese pesquisada (`t1`) |
+| `ementa.brief.critique` | evento no `invoke_agent brief_drafting`, um por crítica, com `status`, `failed` (critérios reprovados) e `round` | `{"status": "failed", "failed": ["tone"], "round": 1}` |
+| `ementa.approval.status`, `ementa.approval.action` | string | `pending` quando a peça para na aprovação; na retomada, a decisão (`approve`, `edit`, `reject`) e o resultado (`approved`, `edited`, `rejected`) |
+| `ementa.brief.changed_lines` | int | Na retomada com `edit`: linhas que o advogado tirou do rascunho ou pôs nele |
+| `ementa.run.id` | string | No `process run_drafting`: a execução de redação, que é também a thread |
+| `ementa.run.status` | string | Onde a perna deixou a execução: `awaiting_approval`, `finalized`, `rejected` |
+| `ementa.approval.id`, `ementa.approval.action` | string | Na retomada: a aprovação e a decisão do advogado (`approve`, `reject` ou `edit`); nunca o texto |
+| `ementa.playbook.id`, `ementa.playbook.version` | string, int | No `invoke_agent contract_review`: `consumer-services` e `1` |
+| `ementa.contract.rules_only` | bool | A revisão rodou só as regras, sem modelo |
+| `ementa.contract.clauses`, `ementa.contract.findings`, `ementa.contract.flagged` | int | Cláusulas analisadas, linhas da matriz de risco e cláusulas com risco |
+| `ementa.contract.findings.<gravidade>` | int | Linhas da matriz por gravidade: `alta`, `media`, `baixa` |
+| `ementa.contract.unreviewed` | int | Cláusulas que o modelo não avaliou (falha ou JSON inválido) |
+| `ementa.contract.clause` | string | Número da cláusula, nos spans `execute_tool check_playbook_rule` e `execute_tool classify_clause` |
+| `ementa.contract.rule_hits`, `ementa.contract.model_findings` | int | Regras que a cláusula violou; critérios que o modelo apontou nela |
+| `ementa.hitl.status` | string | `pending`, `approved`, `edited` ou `rejected`, depois de cada passo da revisão |
+| `ementa.hitl.action` | string | Na retomada: `approve`, `edit` ou `reject` |
 
 As chamadas à OpenAI usam a instrumentação oficial (`opentelemetry-instrumentation-openai-v2` 2.4b0, que cobre Chat Completions e embeddings; a Responses API não é coberta, por isso a F1 usa Chat Completions). FastAPI, httpx e psycopg entram com instrumentação automática.
 

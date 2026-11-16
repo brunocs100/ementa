@@ -38,7 +38,7 @@ Os datasets ficam em `evals/`, em JSONL, versionados no git. Cada linha é um ca
 |---|---|---|---|
 | `evals/smoke_cdc.jsonl` | 10 perguntas do CDC | Escrito à mão, com a citação tirada do texto literal da lei | F1 |
 | `evals/legal_research.jsonl` | 30 perguntas (CDC, LGPD, CPC, súmulas) | Expansão do anterior, mesma regra | F2 |
-| `evals/contracts_planted.jsonl` | Contratos fictícios com cláusulas plantadas | Gerados para o projeto; o gabarito é a lista de cláusulas plantadas | F4 |
+| `evals/contracts_planted.jsonl` | 10 contratos fictícios, 97 cláusulas (49 plantadas, 48 limpas) | Escritos à mão para o projeto, em `data/firm/contracts/`; o gabarito diz que regra ou critério cada cláusula plantada viola e lista as limpas | F4 |
 | `evals/intake_triage.jsonl` | Relatos de triagem rotulados | Destilação com rótulo da especificação mais amostra escrita à mão (ver [ML e fine-tuning](ML-E-FINE-TUNING.md)) | F5, F9 |
 | `evals/redteam/` | Ataques por categoria e perguntas legítimas | Escrito à mão e expandido pelo promptfoo | F6 |
 
@@ -61,6 +61,22 @@ Como o autor não é advogado, o gabarito da pesquisa sai sempre do texto litera
 
 Na F1 elas rodam à mão (`uv run pytest -m eval -k smoke`); na F2 viram o núcleo das 30 perguntas que rodam no CI.
 
+### Cláusulas plantadas (F4)
+
+Dez contratos fictícios de serviços ao consumidor, em `data/firm/contracts/`, escritos para o projeto: sete em Markdown e três em texto puro, de academia, pilates, curso online, idiomas, internet, streaming, plano de saúde, plano odontológico, faxina e estacionamento. Cada linha de `evals/contracts_planted.jsonl` diz que regra ou critério do playbook cada cláusula plantada viola, com uma nota, e lista as limpas. São 97 cláusulas: 49 plantadas, com 42 pares (cláusula, regra) das regras determinísticas e 14 dos critérios do modelo, e 48 limpas, várias de propósito parecidas com uma plantada (multa de 2%, reajuste anual pelo IPCA com aviso, foro do domicílio do consumidor). Todo item do playbook aparece pelo menos uma vez. O gabarito cita só o que o texto literal do CDC ou da súmula do corpus sustenta, como o resto da avaliação.
+
+O que foi medido, em 15/11/2026, só com as regras (sem modelo e sem custo; teste `test_the_rules_alone_find_the_planted_clauses`, que roda a cada push):
+
+| Medida | VP | FP | FN | Precisão | Recall | F1 |
+|---|---|---|---|---|---|---|
+| Pares (cláusula, regra), só as regras | 40 | 1 | 2 | 0,98 | 0,95 | 0,96 |
+| Cláusulas plantadas, contra todas as 49 | 36 | 1 | 13 | 0,97 | 0,73 | 0,84 |
+
+- A primeira linha é a meta da fase (F1 ≥ 0,8) para as regras determinísticas. A segunda conta toda cláusula plantada, inclusive as 11 que só um critério do modelo acha (venda casada, redação obscura, prazo a critério, desvantagem exagerada): é o que falta para o modelo cobrir.
+- Os números são da primeira rodada, antes de ajustar qualquer regra a estes contratos. Os três erros foram escritos de propósito e ficaram sem ajuste: um fornecedor que pode encerrar a assinatura, o que é justo porque o consumidor também pode, mas noutra cláusula (FP de `cancelamento-unilateral`); uma permanência de 12 meses que o teste de reciprocidade toma por direito do consumidor (FN); e um preço "pela tabela vigente", variação indireta que nenhum padrão nomeia (FN de `preco-unilateral`).
+- Ressalva honesta: o mesmo autor escreveu as regras e os contratos, então o número é otimista. Contrato real tem redação que nenhum padrão previu; a medida que vale é a de um conjunto separado, que ainda não existe.
+- O agente completo, com os critérios no modelo `fast`, não foi medido: a avaliação `test_the_full_agent_finds_the_planted_clauses` (`-m eval`) pula sem `OPENAI_API_KEY` e custaria cerca de US$ 0,01 pelas 97 chamadas (estimativa). Quando rodar, ela exige F1 ≥ 0,8 por cláusula e por par, sobre regras e critérios juntos.
+
 ## Métricas
 
 | Métrica | Tipo | Definição |
@@ -72,7 +88,7 @@ Na F1 elas rodam à mão (`uv run pytest -m eval -k smoke`); na F2 viram o núcl
 | `must_include` | Determinística | Todos os trechos obrigatórios presentes na resposta |
 | Citações exibidas verificadas | Determinística | Tem que ser 100%; qualquer citação exibida sem verificação é falha |
 | Fidelidade | Juiz | A resposta só afirma o que está nas fontes; nota de 1 a 5 com o `judge` em amostra |
-| F1 das cláusulas | Determinística | Cláusulas plantadas encontradas pelo `contract_review` (F4) |
+| F1 das cláusulas | Determinística | Pares (cláusula, regra) e cláusulas plantadas que o `contract_review` aponta, contra o gabarito de `contracts_planted` (F4) |
 | Acurácia da triagem | Determinística | Área e urgência corretas (F5, F9) |
 | Custo e latência por tarefa | Medida | Soma do trace; p50 e p95 |
 
